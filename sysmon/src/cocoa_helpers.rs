@@ -2,46 +2,55 @@ use cocoa::appkit::NSMenuItem;
 use cocoa::base::{id, nil};
 use cocoa::foundation::{NSAutoreleasePool, NSString};
 use objc::{msg_send, sel, sel_impl};
+use objc::runtime::Object;
+
 use crate::types::SendUiPtr;
 
-pub fn status_button(status_item: id) -> id {
+/// SAFETY: Must be called from the main thread with a valid status item.
+pub fn status_button(status_item: id) -> *mut Object {
     unsafe { msg_send![status_item, button] }
 }
 
-pub fn set_button_title(ptr: SendUiPtr, s: &str) {
+/// Safe wrapper to set a button's title.
+pub fn set_button_title(ptr: &SendUiPtr, title: &str) {
     unsafe {
-        let id = ptr.0.as_ptr() as cocoa::base::id;
-        let title = cocoa::foundation::NSString::alloc(nil).init_str(s);
-        let _: () = objc::msg_send![id, setTitle: title];
+        let title_str = NSString::alloc(nil).init_str(title);
+        let _: () = msg_send![ptr.as_ptr(), setTitle: title_str];
     }
 }
 
-pub fn set_menu_item_title(ptr: SendUiPtr, s: &str) {
+/// Safe wrapper to set a menu item's title.
+pub fn set_menu_item_title(ptr: &SendUiPtr, title: &str) {
     unsafe {
-        let id = ptr.0.as_ptr() as cocoa::base::id;
-        let ns = cocoa::foundation::NSString::alloc(nil).init_str(s);
-        let _: () = objc::msg_send![id, setTitle: ns];
+        let title_str = NSString::alloc(nil).init_str(title);
+        let _: () = msg_send![ptr.as_ptr(), setTitle: title_str];
     }
 }
 
-pub fn new_menu_item_with_title(s: &str) -> id {
+/// Creates a new menu item wrapped in a `SendUiPtr`.
+/// SAFETY: Must be called on the main thread.
+pub fn new_menu_item_with_title(title: &str) -> SendUiPtr {
     unsafe {
         let _pool = NSAutoreleasePool::new(nil);
-        let item = NSMenuItem::new(nil).autorelease();
-        let title = NSString::alloc(nil).init_str(s);
-        let _: () = msg_send![item, setTitle: title];
-        item
+        let item: id = NSMenuItem::new(nil).autorelease();
+        let title_str = NSString::alloc(nil).init_str(title);
+        let _: () = msg_send![item, setTitle: title_str];
+        SendUiPtr::new(item).expect("created menu item was null")
     }
 }
 
-pub fn menu_add_item(menu: id, item: id) {
+/// Adds a menu item to a menu.
+/// SAFETY: Both `menu` and `item` must be valid Objective-C objects.
+pub fn menu_add_item(menu: &SendUiPtr, item: &SendUiPtr) {
     unsafe {
-        let _: () = msg_send![menu, addItem: item];
+        let _: () = msg_send![menu.as_ptr(), addItem: item.as_ptr()];
     }
 }
 
-pub fn status_item_set_menu(status_item: id, menu: id) {
+/// Sets the menu for a status item.
+/// SAFETY: Must be called from main thread with valid pointers.
+pub fn status_item_set_menu(status_item: &SendUiPtr, menu: &SendUiPtr) {
     unsafe {
-        let _: () = msg_send![status_item, setMenu: menu];
+        let _: () = msg_send![status_item.as_ptr(), setMenu: menu.as_ptr()];
     }
 }
