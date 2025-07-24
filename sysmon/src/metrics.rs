@@ -35,7 +35,7 @@ pub fn sample() -> Metrics {
 /* ---------------- CPU usage % ---------------- */
 
 lazy_static::lazy_static! {
-    static ref LAST_CPU: Mutex<Option<Vec<[u32; 4]>>> = Mutex::new(None);
+    static ref LAST_CPU: Mutex<Option<Vec<[u64; 4]>>> = Mutex::new(None);
 }
 
 pub fn cpu_percent() -> (f32, usize) {
@@ -65,7 +65,7 @@ pub fn cpu_percent() -> (f32, usize) {
             let nice = cpu.cpu_ticks[1] as u64;
             let system = cpu.cpu_ticks[2] as u64;
             let idle = cpu.cpu_ticks[3] as u64;
-            new.push([user as u32, nice as u32, system as u32, idle as u32]);
+            new.push([user, nice, system, idle]);;
         }
 
         let mut last_guard = LAST_CPU.lock().unwrap();
