@@ -59,10 +59,6 @@ pub fn cpu_percent() -> (f32, usize) {
 
         let per_cpu = std::slice::from_raw_parts(cpu_info, cpu_count as usize);
         let mut new = Vec::with_capacity(cpu_count as usize);
-        let mut total_user = 0u64;
-        let mut total_system = 0u64;
-        let mut total_idle = 0u64;
-        let mut total_nice = 0u64;
 
         for cpu in per_cpu {
             let user = cpu.cpu_ticks[0] as u64;
@@ -100,13 +96,17 @@ pub fn cpu_percent() -> (f32, usize) {
 
         *last_guard = Some(new);
 
-        // Deallocate - host_processor_info doc: vm_deallocate is needed, but mach2 doesn’t wrap it.
-        // On a tiny tool this leak is tiny; keep TODO if you want to vm_deallocate.
-        // vm_deallocate(mach_task_self(), cpu_info as vm_address_t, (count as usize * size_of::<u32>()) as vm_size_t);
+        let bytes = (count as usize) * std::mem::size_of::<u32>();
+        let _ = vm_deallocate(
+            mach_task_self(),
+            cpu_info as vm_address_t,
+            bytes as vm_size_t,
+        );
 
         (percent, ncpu)
     }
 }
+
 
 /* ---------------- Memory GB ---------------- */
 
