@@ -9,7 +9,7 @@ use cocoa::appkit::{
     NSApplication, NSApplicationActivationPolicyAccessory, NSMenu, NSStatusBar,
     NSVariableStatusItemLength,
 };
-use cocoa::base::{id, nil};
+use cocoa::base::nil;
 use cocoa::foundation::NSAutoreleasePool;
 use dispatch::Queue;
 use objc::rc::StrongPtr;
@@ -18,8 +18,10 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
+use objc::runtime::Object;
 
-#[derive(Copy, Clone)]
+
+#[derive(Clone)]
 struct UiHandles {
     button: SendUiPtr,
     item: SendUiPtr,
@@ -49,18 +51,23 @@ fn main() {
         let status_bar = NSStatusBar::systemStatusBar(nil);
         let status_item = status_bar.statusItemWithLength_(NSVariableStatusItemLength);
 
-        let button: id = status_button(status_item);
-        debug_assert_ne!(button, nil);
-        let button = SendUiPtr::new(button).expect("button ptr is null");
-        set_button_title(button, "sysmon …");
+        let raw_button: *mut Object = status_button(status_item);
+        debug_assert!(!raw_button.is_null(), "button ptr is null");
+        let button = SendUiPtr::new(raw_button).unwrap();
+
+        set_button_title(&button, "sysmon …");
 
         let item = new_menu_item_with_title("Loading…");
-        debug_assert_ne!(item, nil);
-        let item = SendUiPtr::new(item).expect("item ptr is null");
+        assert!(
+            !item.as_ptr().is_null(),
+            "Menu item returned null"
+        );
 
         let menu = NSMenu::new(nil).autorelease();
-        menu_add_item(menu, item.as_ptr());
-        status_item_set_menu(status_item, menu);
+        let menu = SendUiPtr::new(menu).expect("menu ptr is null");
+        menu_add_item(&menu, &item);
+        let status_item_ptr = SendUiPtr::new(status_item).expect("status item ptr is null");
+        status_item_set_menu(&status_item_ptr, &menu);
 
         let _button_sp = StrongPtr::retain(button.as_ptr());
         let _item_sp   = StrongPtr::retain(item.as_ptr());
@@ -75,14 +82,11 @@ fn main() {
             let title = format!("CPU {:>4.1}%  MEM {:>4.1}/{:>4.1}G", cpu, used_gb, total_gb);
             let details = format!("CPU:  {:.1}%\nMem:  {:.1}/{:.1} GB", cpu, used_gb, total_gb);
 
-            let h = handles;
+            let h = handles.clone();
             Queue::main().exec_async(move || {
                 let _pool = NSAutoreleasePool::new(nil);
-                #[allow(unused_unsafe)]
-                unsafe {
-                    set_button_title(h.button, &title);
-                    set_menu_item_title(h.item, &details);
-                }
+                set_button_title(&h.button, &title);
+                set_menu_item_title(&h.item, &details);
             });
 
             thread::sleep(Duration::from_secs(1));
