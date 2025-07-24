@@ -1,4 +1,4 @@
-# Temp Tracker
+# Sysmon
 
 A lightweight and secure temperature monitoring tool for macOS, designed with privacy and efficiency in mind.
 
