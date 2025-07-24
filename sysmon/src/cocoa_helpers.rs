@@ -33,6 +33,7 @@ pub fn new_menu_item_with_title(title: &str) -> SendUiPtr {
     unsafe {
         let _pool = NSAutoreleasePool::new(nil);
         let item: id = NSMenuItem::new(nil).autorelease();
+        assert!(!item.is_null(), "NSMenuItem::new returned null");
         let title_str = NSString::alloc(nil).init_str(title);
         let _: () = msg_send![item, setTitle: title_str];
         SendUiPtr::new(item).expect("created menu item was null")
