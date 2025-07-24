@@ -1,11 +1,14 @@
+mod cocoa_helpers;
+use crate::cocoa_helpers::*;
+
 use cocoa::appkit::{
-    NSApplication, NSApplicationActivationPolicyAccessory, NSMenu, NSMenuItem, NSStatusBar,
+    NSApplication, NSApplicationActivationPolicyAccessory, NSMenu, NSStatusBar,
     NSVariableStatusItemLength,
 };
 use cocoa::base::{id, nil};
-use cocoa::foundation::{NSAutoreleasePool, NSString};
+use cocoa::foundation::NSAutoreleasePool;
 use dispatch::Queue;
-use objc::{msg_send, sel, sel_impl};
+use objc::rc::StrongPtr;
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
 use std::thread;
@@ -32,35 +35,38 @@ fn main() {
         // Status item
         let status_bar = NSStatusBar::systemStatusBar(nil);
         let status_item = status_bar.statusItemWithLength_(NSVariableStatusItemLength);
-        let button: id = msg_send![status_item, button];
-        let _: () = msg_send![button, setTitle: NSString::alloc(nil).init_str("sysmon …")];
+
+        let button: id = status_button(status_item);
+        set_button_title(button, "sysmon …");
 
         // Menu with a single, updatable item
         let menu = NSMenu::new(nil).autorelease();
-        let item = NSMenuItem::new(nil).autorelease();
-        let _: () = msg_send![item, setTitle: NSString::alloc(nil).init_str("Loading…")];
-        let _: () = msg_send![menu, addItem: item];
-        let _: () = msg_send![status_item, setMenu: menu];
+        let item = new_menu_item_with_title("Loading…");
+        menu_add_item(menu, item);
+        status_item_set_menu(status_item, menu);
 
-        // Convert to plain integers so the closure can be Send
+        // Retain so they stay alive for the process lifetime
+        let _button_sp = StrongPtr::retain(button);
+        let _item_sp   = StrongPtr::retain(item);
+
+        // Send-safe raw addresses for the worker
         let button_addr = button as *mut _ as usize;
-        let item_addr = item as *mut _ as usize;
+        let item_addr   = item as *mut _ as usize;
 
         // Worker thread computes metrics; UI update is posted to the main queue
         thread::spawn(move || loop {
             let (cpu, used_gb, total_gb) = sample();
-            let title = format!("CPU {:>4.1}%  MEM {:>4.1}/{:>4.1}G", cpu, used_gb, total_gb);
+            let title   = format!("CPU {:>4.1}%  MEM {:>4.1}/{:>4.1}G", cpu, used_gb, total_gb);
             let details = format!("CPU:  {:.1}%\nMem:  {:.1}/{:.1} GB", cpu, used_gb, total_gb);
 
-            Queue::main().exec_sync(move || unsafe {
-                // Cast back to Objective‑C ids on the main thread
-                let button: id = button_addr as *mut _;
-                let item: id = item_addr as *mut _;
+            Queue::main().exec_sync(move || {
+                let _pool = NSAutoreleasePool::new(nil);
 
-                let ns_title = NSString::alloc(nil).init_str(&title);
-                let ns_details = NSString::alloc(nil).init_str(&details);
-                let _: () = msg_send![button, setTitle: ns_title];
-                let _: () = msg_send![item, setTitle: ns_details];
+                let button: id = button_addr as *mut _;
+                let item: id   = item_addr as *mut _;
+
+                set_button_title(button, &title);
+                set_menu_item_title(item, &details);
             });
 
             thread::sleep(Duration::from_secs(1));
@@ -71,12 +77,15 @@ fn main() {
 }
 
 fn sample() -> (f32, f32, f32) {
-    let mut sys = SYS.lock().unwrap();
+    let mut sys = match SYS.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(), // be resilient to panics
+    };
     sys.refresh_cpu();
     sys.refresh_memory();
 
     let cpu = sys.global_cpu_info().cpu_usage();
-    let used_gib = bytes_to_gib(sys.used_memory());
+    let used_gib  = bytes_to_gib(sys.used_memory());
     let total_gib = bytes_to_gib(sys.total_memory());
     (cpu, used_gib, total_gib)
 }
