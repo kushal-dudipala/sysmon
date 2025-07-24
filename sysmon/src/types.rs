@@ -1,7 +1,7 @@
 use objc::runtime::Object;
 use std::ptr::NonNull;
 
-#[derive(Copy, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct SendUiPtr(pub NonNull<Object>);
 
 impl SendUiPtr {
@@ -9,7 +9,7 @@ impl SendUiPtr {
         NonNull::new(ptr).map(Self)
     }
 
-    pub fn as_ptr(self) -> *mut Object {
+    pub fn as_ptr(&self) -> *mut Object {
         self.0.as_ptr()
     }
 }
