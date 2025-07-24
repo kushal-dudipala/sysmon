@@ -8,5 +8,4 @@ fn main() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     fs::copy("macos/Info.plist", out_dir.join("Info.plist"))
         .expect("Failed to copy Info.plist");
-    println!("cargo:warning=Copied Info.plist to OUT_DIR");
 }

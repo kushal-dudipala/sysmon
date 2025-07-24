@@ -1,3 +1,4 @@
+#![allow(unexpected_cfgs)]
 use cocoa::appkit::{
     NSApplication, NSApplicationActivationPolicyAccessory, NSMenu, NSMenuItem, NSStatusBar,
     NSVariableStatusItemLength,
@@ -23,7 +24,6 @@ static SYS: Lazy<Mutex<System>> = Lazy::new(|| {
 });
 
 // Minimal wrapper so we can move these into a thread.
-// We STILL only touch them on the main thread via dispatch::Queue::main().
 #[derive(Copy, Clone)]
 struct ObjcId(*mut std::ffi::c_void);
 unsafe impl Send for ObjcId {}
@@ -73,13 +73,12 @@ fn main() {
             );
 
             // Post UI update back to main thread
-            Queue::main().exec_sync(move || unsafe {
+            Queue::main().exec_sync(move || {
                 let ns_title = NSString::alloc(nil).init_str(&title);
                 let ns_details = NSString::alloc(nil).init_str(&details);
                 let _: () = msg_send![button_ptr.as_id(), setTitle: ns_title];
-                let _: () = msg_send![item_ptr.as_id(), setTitle: ns_details];
+                let _: () = msg_send![item_ptr.as_id(), setTitle: ns_details]; 
             });
-
             thread::sleep(Duration::from_secs(1));
         });
 
@@ -93,11 +92,13 @@ fn sample() -> (f32, f32, f32) {
     sys.refresh_memory();
 
     let cpu = sys.global_cpu_info().cpu_usage();
-    let used_gb = bytes_to_gb(sys.used_memory() * 1024);
-    let total_gb = bytes_to_gb(sys.total_memory() * 1024);
-    (cpu, used_gb, total_gb)
+    let used_gib  = bytes_to_gib(sys.used_memory());
+    let total_gib = bytes_to_gib(sys.total_memory());
+    (cpu, used_gib, total_gib)
 }
 
-fn bytes_to_gb(b: u64) -> f32 {
-    (b as f64 / (1024.0 * 1024.0 * 1024.0)) as f32
+fn bytes_to_gib(bytes: u64) -> f32 {
+    // round to 1 decimal place
+    let gib = bytes as f64 / (1024.0 * 1024.0 * 1024.0);
+    (gib * 10.0).round() as f32 / 10.0
 }
