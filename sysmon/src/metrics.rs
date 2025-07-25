@@ -11,6 +11,7 @@ use mach2::{
 use std::mem::size_of;
 use std::sync::Mutex;
 use mach2::vm::{mach_task_self, vm_deallocate, vm_address_t, vm_size_t};
+use crate::units::bytes_to_gb;
 
 #[derive(Clone, Debug)]
 pub struct Metrics {
@@ -152,6 +153,4 @@ pub fn mem_gb() -> (f32, f32) {
     }
 }
 
-fn bytes_to_gb(b: u64) -> f32 {
-    (b as f64 / (1024.0 * 1024.0 * 1024.0)) as f32
-}
+
