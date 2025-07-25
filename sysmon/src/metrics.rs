@@ -10,6 +10,7 @@ use mach2::{
 };
 use std::mem::size_of;
 use std::sync::Mutex;
+use mach2::vm::{mach_task_self, vm_deallocate, vm_address_t, vm_size_t};
 
 #[derive(Clone, Debug)]
 pub struct Metrics {
