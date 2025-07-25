@@ -85,6 +85,7 @@ struct UiState {
     gpu_t_item: UiObj,
     net_item: UiObj,
     _delegate: UiObj, 
+    _quit_target: UiObj,
 }
 
 thread_local! {
@@ -189,7 +190,7 @@ fn main() {
         menu_add_item(&mt, &menu, &net_item);
 
         // Quit
-        let quit_item = make_quit_menu_item(&mt, "Quit sysmon");
+        let (quit_item, quit_target) = make_quit_menu_item(&mt, "Quit sysmon");
         menu_add_item(&mt, &menu, &quit_item);
 
         // Attach delegate that starts/stops the background thread
@@ -208,6 +209,7 @@ fn main() {
             gpu_t_item,
             net_item,
             _delegate: delegate,
+            _quit_target: quit_target,
         });
 
         app.run();

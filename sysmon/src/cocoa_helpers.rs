@@ -1,4 +1,4 @@
-use cocoa::appkit::{NSApplication, NSMenuItem};
+use cocoa::appkit::NSMenuItem;
 use cocoa::base::{id, nil};
 use cocoa::foundation::{NSAutoreleasePool, NSString};
 use dispatch::Queue;
@@ -13,7 +13,6 @@ use std::sync::{
 };
 use std::thread;
 use std::time::Duration;
-
 use crate::types::{MainThreadToken, UiObj};
 
 /* ---------------- Refresh callback plumbing ---------------- */
@@ -70,13 +69,11 @@ pub fn status_item_set_menu(_mt: &MainThreadToken, status_item: &UiObj, menu: &U
     }
 }
 
-/* ---------------- Quit menu ---------------- */
 
-extern "C" fn quit_gracefully(this: &Object, _cmd: Sel, _sender: id) {
-    unsafe {
-        let app = NSApplication::sharedApplication(nil);
-        let _: () = msg_send![app, terminate: this];
-    }
+/* ---------------- Quit Callback ---------------- */
+
+extern "C" fn quit_immediately(_this: &Object, _cmd: Sel, _sender: id) {
+    std::process::exit(0);
 }
 
 static QUIT_CLASS: Lazy<&'static Class> = Lazy::new(|| unsafe {
@@ -85,28 +82,29 @@ static QUIT_CLASS: Lazy<&'static Class> = Lazy::new(|| unsafe {
         .expect("Unable to declare SysmonQuitTarget class");
 
     decl.add_method(
-        sel!(quitGracefully:),
-        quit_gracefully as extern "C" fn(&Object, Sel, id),
+        sel!(quitImmediately:),
+        quit_immediately as extern "C" fn(&Object, Sel, id),
     );
+
     decl.register()
 });
 
-fn make_quit_target() -> id {
-    unsafe { msg_send![*QUIT_CLASS, new] }
-}
-
-pub fn make_quit_menu_item(_mt: &MainThreadToken, title: &str) -> UiObj {
+pub fn make_quit_menu_item(_mt: &MainThreadToken, title: &str) -> (UiObj, UiObj) {
     unsafe {
-        let key_equiv = NSString::alloc(nil).init_str("");
         let title_ns = NSString::alloc(nil).init_str(title);
+        let key_equiv = NSString::alloc(nil).init_str("");
+
         let item: id = NSMenuItem::alloc(nil)
-            .initWithTitle_action_keyEquivalent_(title_ns, sel!(quitGracefully:), key_equiv)
+            .initWithTitle_action_keyEquivalent_(title_ns, sel!(quitImmediately:), key_equiv)
             .autorelease();
 
-        let target = make_quit_target();
+        let target = msg_send![*QUIT_CLASS, new];
         let _: () = msg_send![item, setTarget: target];
 
-        UiObj::from_raw_retained(item)
+        (
+            UiObj::from_raw_retained(item),
+            UiObj::from_raw_retained(target), 
+        )
     }
 }
 
