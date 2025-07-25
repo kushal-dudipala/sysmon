@@ -6,17 +6,17 @@ use objc::declare::ClassDecl;
 use objc::runtime::{Class, Object, Sel};
 use once_cell::sync::Lazy;
 
-use crate::types::UiObj;
+use crate::types::{MainThreadToken, UiObj};
 
-/* ---------------- Basic UI helpers  ---------------- */
+/* ---------------- Basic UI helpers (all require &MainThreadToken) ---------------- */
 
-/// SAFETY: Must be called from the main thread with a valid status item.
-pub fn status_button(status_item: id) -> id {
+/// Must be called on main thread, with a valid status item.
+pub fn status_button(_mt: &MainThreadToken, status_item: id) -> id {
     unsafe { msg_send![status_item, button] }
 }
 
 /// Safe wrapper to set a button's title.
-pub fn set_button_title(ptr: &UiObj, title: &str) {
+pub fn set_button_title(_mt: &MainThreadToken, ptr: &UiObj, title: &str) {
     unsafe {
         let title_str = NSString::alloc(nil).init_str(title);
         let _: () = msg_send![ptr.as_id(), setTitle: title_str];
@@ -24,7 +24,7 @@ pub fn set_button_title(ptr: &UiObj, title: &str) {
 }
 
 /// Safe wrapper to set a menu item's title.
-pub fn set_menu_item_title(ptr: &UiObj, title: &str) {
+pub fn set_menu_item_title(_mt: &MainThreadToken, ptr: &UiObj, title: &str) {
     unsafe {
         let title_str = NSString::alloc(nil).init_str(title);
         let _: () = msg_send![ptr.as_id(), setTitle: title_str];
@@ -32,27 +32,26 @@ pub fn set_menu_item_title(ptr: &UiObj, title: &str) {
 }
 
 /// Creates a new menu item wrapped in a `UiObj`.
-/// SAFETY: Must be called on the main thread.
-pub fn new_menu_item_with_title(title: &str) -> UiObj {
+pub fn new_menu_item_with_title(_mt: &MainThreadToken, title: &str) -> UiObj {
     unsafe {
         let _pool = NSAutoreleasePool::new(nil);
         let item: id = NSMenuItem::new(nil).autorelease();
         assert!(!item.is_null(), "NSMenuItem::new returned null");
         let title_str = NSString::alloc(nil).init_str(title);
         let _: () = msg_send![item, setTitle: title_str];
-        UiObj::from_raw(item)
+        UiObj::from_raw_retained(item)
     }
 }
 
 /// Adds a menu item to a menu.
-pub fn menu_add_item(menu: &UiObj, item: &UiObj) {
+pub fn menu_add_item(_mt: &MainThreadToken, menu: &UiObj, item: &UiObj) {
     unsafe {
         let _: () = msg_send![menu.as_id(), addItem: item.as_id()];
     }
 }
 
 /// Sets the menu for a status item.
-pub fn status_item_set_menu(status_item: &UiObj, menu: &UiObj) {
+pub fn status_item_set_menu(_mt: &MainThreadToken, status_item: &UiObj, menu: &UiObj) {
     unsafe {
         let _: () = msg_send![status_item.as_id(), setMenu: menu.as_id()];
     }
@@ -74,6 +73,7 @@ extern "C" fn quit_gracefully(this: &Object, _cmd: Sel, _sender: id) {
     }
 }
 
+/// Class used as target for the quit menu item. Intentionally leaked for process lifetime.
 static QUIT_CLASS: Lazy<&'static Class> = Lazy::new(|| unsafe {
     let superclass = class!(NSObject);
     let mut decl = ClassDecl::new("SysmonQuitTarget", superclass)
@@ -98,9 +98,9 @@ fn make_quit_target(timer: id) -> id {
 }
 
 /// Create a “Quit sysmon” NSMenuItem that gracefully invalidates the timer first.
-pub fn make_quit_menu_item(title: &str, timer: id) -> UiObj {
+pub fn make_quit_menu_item(_mt: &MainThreadToken, title: &str, timer: id) -> UiObj {
     unsafe {
-        let key_equiv = NSString::alloc(nil).init_str(""); 
+        let key_equiv = NSString::alloc(nil).init_str("");
         let title_ns = NSString::alloc(nil).init_str(title);
         let item: id = NSMenuItem::alloc(nil)
             .initWithTitle_action_keyEquivalent_(title_ns, sel!(quitGracefully:), key_equiv)
@@ -109,6 +109,6 @@ pub fn make_quit_menu_item(title: &str, timer: id) -> UiObj {
         let target = make_quit_target(timer);
         let _: () = msg_send![item, setTarget: target];
 
-        UiObj::from_raw(item)
+        UiObj::from_raw_retained(item)
     }
 }
