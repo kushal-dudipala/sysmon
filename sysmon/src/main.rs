@@ -4,11 +4,12 @@ mod cocoa_helpers;
 mod ioreport;
 mod types;
 mod units;
+mod net;
 
 use crate::cocoa_helpers::*;
 use crate::types::{MainThreadToken, UiObj};
 use units::bytes_to_gb;
-
+use units::fmt_rate;
 use cocoa::appkit::{
     NSApplication, NSApplicationActivationPolicyAccessory, NSMenu, NSStatusBar,
     NSVariableStatusItemLength,
@@ -54,7 +55,7 @@ static SYS: Lazy<Mutex<System>> = Lazy::new(|| {
 
 fn new_system() -> System {
     let mut s = System::new_with_specifics(
-        RefreshKind::new()
+        RefreshKind::nothing()
             .with_memory(MemoryRefreshKind::everything())
             .with_cpu(CpuRefreshKind::everything()),
     );
@@ -82,7 +83,8 @@ struct UiState {
     mem_item: UiObj,
     cpu_t_item: UiObj,
     gpu_t_item: UiObj,
-    _delegate: UiObj, // keep it alive
+    net_item: UiObj,
+    _delegate: UiObj, 
 }
 
 thread_local! {
@@ -109,6 +111,7 @@ fn refresh(_opened: bool) {
         let (cpu, used_gb, total_gb) = sample();
         let cpu_t = ioreport::cpu_temp_c();
         let gpu_t = ioreport::gpu_temp_c();
+        let (rx_bps, tx_bps) = net::net_usage_bps();
 
         set_menu_item_title(&mt, &ui.cpu_item, &format!("CPU:   {:.1}%", cpu));
         set_menu_item_title(
@@ -135,6 +138,11 @@ fn refresh(_opened: bool) {
                     .map(|t| format!("{t:.1} °C"))
                     .unwrap_or_else(|| "—".into())
             ),
+        );
+        set_menu_item_title(
+            &mt,
+            &ui.net_item,
+            &format!("Net:   ↑{} ↓{}", fmt_rate(tx_bps), fmt_rate(rx_bps)),
         );
     });
 }
@@ -170,13 +178,15 @@ fn main() {
         // One line per metric
         let cpu_item = new_menu_item_with_title(&mt, "CPU:   …");
         let mem_item = new_menu_item_with_title(&mt, "Mem:   …");
-        let cpu_t_item = new_menu_item_with_title(&mt, "CPU T: …");
-        let gpu_t_item = new_menu_item_with_title(&mt, "GPU T: …");
+        let cpu_t_item = new_menu_item_with_title(&mt, "CPU T:   …");
+        let gpu_t_item = new_menu_item_with_title(&mt, "GPU T:   …");
+        let net_item = new_menu_item_with_title(&mt, "Net:   …");
 
         menu_add_item(&mt, &menu, &cpu_item);
         menu_add_item(&mt, &menu, &mem_item);
         menu_add_item(&mt, &menu, &cpu_t_item);
         menu_add_item(&mt, &menu, &gpu_t_item);
+        menu_add_item(&mt, &menu, &net_item);
 
         // Quit
         let quit_item = make_quit_menu_item(&mt, "Quit sysmon");
@@ -196,6 +206,7 @@ fn main() {
             mem_item,
             cpu_t_item,
             gpu_t_item,
+            net_item,
             _delegate: delegate,
         });
 
@@ -207,12 +218,12 @@ fn main() {
 
 fn sample() -> (f32, f32, f32) {
     let mut sys = lock_sys();
+    sys.refresh_cpu_all();           
+    sys.refresh_memory();         
 
-    sys.refresh_cpu();
-    sys.refresh_memory();
-
-    let cpu = sys.global_cpu_info().cpu_usage();
-    let used_gb = bytes_to_gb(sys.used_memory());   // you said: ignore the unit bug
+    let cpu = sys.global_cpu_usage();
+    let used_gb  = bytes_to_gb(sys.used_memory());
     let total_gb = bytes_to_gb(sys.total_memory());
+
     (cpu, used_gb, total_gb)
 }
