@@ -1,19 +1,27 @@
-use objc::runtime::Object;
-use std::ptr::NonNull;
+use cocoa::base::id;
+use objc::rc::StrongPtr;
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct SendUiPtr(pub NonNull<Object>);
+#[derive(Clone)] // Drop Debug — StrongPtr doesn't implement it
+pub struct UiObj(StrongPtr);
 
-impl SendUiPtr {
-    pub fn new(ptr: *mut Object) -> Option<Self> {
-        NonNull::new(ptr).map(Self)
+impl UiObj {
+    /// # Safety
+    /// `obj` must be a valid Objective‑C object pointer.
+    pub unsafe fn from_raw(obj: id) -> Self {
+        // Because of `#![deny(unsafe_op_in_unsafe_fn)]`, wrap the retain in its own `unsafe` block.
+        let sp = unsafe { StrongPtr::retain(obj) };
+        UiObj(sp)
     }
 
-    pub fn as_ptr(&self) -> *mut Object {
-        self.0.as_ptr()
+    #[inline]
+    pub fn as_id(&self) -> id {
+        *self.0
     }
 }
 
-
-// SAFETY: Pointer assumed valid and pinned to main thread.
-// unsafe impl Send for SendUiPtr {}
+ // debug
+impl std::fmt::Debug for UiObj {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "UiObj({:p})", self.as_id())
+    }
+}

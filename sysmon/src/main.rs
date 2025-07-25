@@ -2,11 +2,11 @@
 
 mod cocoa_helpers;
 mod types;
-mod units; 
-use units::bytes_to_gb;
+mod units;
 
 use crate::cocoa_helpers::*;
-use crate::types::SendUiPtr;
+use crate::types::UiObj;
+use units::bytes_to_gb;
 
 use cocoa::appkit::{
     NSApplication, NSApplicationActivationPolicyAccessory, NSMenu, NSStatusBar,
@@ -16,8 +16,6 @@ use cocoa::base::{id, nil, YES};
 use cocoa::foundation::NSAutoreleasePool;
 
 use objc::{class, msg_send, sel, sel_impl};
-use objc::rc::StrongPtr;
-use objc::runtime::Object;
 
 use block::ConcreteBlock;
 use once_cell::sync::Lazy;
@@ -26,8 +24,8 @@ use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
 
 #[derive(Clone)]
 struct UiHandles {
-    button: SendUiPtr,
-    item: SendUiPtr,
+    button: UiObj,
+    item: UiObj,
 }
 
 /* ---------------- Debug-time guard to ensure UI code stays on main thread ---------------- */
@@ -45,7 +43,6 @@ fn assert_main_thread() {
         }
     }
 }
-
 
 /* ---------------- Global sysinfo cache (pure data, Send + Sync OK) ---------------- */
 
@@ -67,31 +64,26 @@ fn main() {
         app.setActivationPolicy_(NSApplicationActivationPolicyAccessory);
 
         // Status item + button
-        let status_bar = NSStatusBar::systemStatusBar(nil);
-        let status_item = status_bar.statusItemWithLength_(NSVariableStatusItemLength);
+        let status_bar: id = NSStatusBar::systemStatusBar(nil);
+        let status_item: id = status_bar.statusItemWithLength_(NSVariableStatusItemLength);
 
-        let raw_button: *mut Object = status_button(status_item);
+        let raw_button: id = status_button(status_item);
         debug_assert!(!raw_button.is_null(), "status_button returned null");
-        let button = SendUiPtr::new(raw_button)
-            .ok_or("status_button returned null")
-            .expect("Could not create UI button handle");
+        let button = UiObj::from_raw(raw_button);
 
         set_button_title(&button, "sysmon");
 
         // Menu + first line
         let item = new_menu_item_with_title("Loading…");
-        debug_assert!(!item.as_ptr().is_null(), "menu item ptr is null");
 
-        let menu = NSMenu::new(nil).autorelease();
-        let menu = SendUiPtr::new(menu).expect("menu ptr is null");
+        let menu_id: id = NSMenu::new(nil).autorelease();
+        let menu = UiObj::from_raw(menu_id);
         menu_add_item(&menu, &item);
 
-        let status_item_ptr = SendUiPtr::new(status_item).expect("status item ptr is null");
+        let status_item_ptr = UiObj::from_raw(status_item);
         status_item_set_menu(&status_item_ptr, &menu);
 
-        // Retain objc objects to keep them alive
-        let _button_sp = StrongPtr::retain(button.as_ptr());
-        let _item_sp   = StrongPtr::retain(item.as_ptr());
+        // No extra StrongPtr::retain needed; UiObj owns & retains.
 
         let ui = UiHandles { button, item };
 
@@ -102,7 +94,7 @@ fn main() {
             let _pool = NSAutoreleasePool::new(nil);
 
             let (cpu, used_gb, total_gb) = sample();
-            let title   = format!("CPU {:>4.1}%  MEM {:>4.1}/{:>4.1}G", cpu, used_gb, total_gb);
+            let title = format!("CPU {:>4.1}%  MEM {:>4.1}/{:>4.1}G", cpu, used_gb, total_gb);
             let details = format!("CPU:  {:.1}%\nMem:  {:.1}/{:.1} GB", cpu, used_gb, total_gb);
 
             set_button_title(&ui.button, &title);
@@ -133,8 +125,7 @@ fn sample() -> (f32, f32, f32) {
     sys.refresh_memory();
 
     let cpu = sys.global_cpu_info().cpu_usage();
-    let used_gib  = bytes_to_gb(sys.used_memory());
+    let used_gib = bytes_to_gb(sys.used_memory());
     let total_gib = bytes_to_gb(sys.total_memory());
     (cpu, used_gib, total_gib)
 }
-
