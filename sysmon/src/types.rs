@@ -16,4 +16,4 @@ impl SendUiPtr {
 
 
 // SAFETY: Pointer assumed valid and pinned to main thread.
-unsafe impl Send for SendUiPtr {}
+// unsafe impl Send for SendUiPtr {}
