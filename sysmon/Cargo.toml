@@ -16,3 +16,10 @@ lto = true
 strip = "symbols"
 codegen-units = 1
 overflow-checks = true
+
+[package.metadata.bundle]
+name = "sysmon"
+identifier = "com.yourname.sysmon"
+icon = []              
+resources = ["macos/Info.plist"]
+version = "0.1.0"
