@@ -38,11 +38,14 @@ extern "C" {
 
 #[inline(always)]
 fn assert_main_thread() {
-    #[cfg(debug_assertions)]
     unsafe {
-        debug_assert!(pthread_main_np() != 0, "UI code touched off the main thread!");
+        if pthread_main_np() == 0 {
+            eprintln!("UI code touched off the main thread!");
+            std::process::abort();
+        }
     }
 }
+
 
 /* ---------------- Global sysinfo cache (pure data, Send + Sync OK) ---------------- */
 
