@@ -19,7 +19,10 @@ use objc::{class, msg_send, sel, sel_impl};
 
 use block::ConcreteBlock;
 use once_cell::sync::Lazy;
-use std::sync::Mutex;
+use std::backtrace::Backtrace;
+use std::panic;
+use std::process;
+use std::sync::{Mutex, MutexGuard};
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
 
 #[derive(Clone)]
@@ -39,24 +42,68 @@ fn assert_main_thread() {
     unsafe {
         if pthread_main_np() == 0 {
             eprintln!("UI code touched off the main thread!");
-            std::process::abort();
+            process::abort();
         }
     }
+}
+
+/* ---------------- Panic hook ---------------- */
+
+fn install_panic_hook() {
+    panic::set_hook(Box::new(|info| {
+        let bt = Backtrace::force_capture();
+        eprintln!("========= sysmon PANIC =========");
+        if let Some(loc) = info.location() {
+            eprintln!("Location: {}:{}", loc.file(), loc.line());
+        }
+        if let Some(s) = info.payload().downcast_ref::<&str>() {
+            eprintln!("Payload: {}", s);
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            eprintln!("Payload: {}", s);
+        } else {
+            eprintln!("Payload: <non-string panic payload>");
+        }
+        eprintln!("Backtrace:\n{bt}");
+        eprintln!("=================================");
+        // Never unwind across Obj-C. Abort hard.
+        unsafe { libc::abort() }
+    }));
 }
 
 /* ---------------- Global sysinfo cache (pure data, Send + Sync OK) ---------------- */
 
 static SYS: Lazy<Mutex<System>> = Lazy::new(|| {
+    let s = new_system();
+    Mutex::new(s)
+});
+
+fn new_system() -> System {
     let mut s = System::new_with_specifics(
         RefreshKind::new()
             .with_memory(MemoryRefreshKind::everything())
             .with_cpu(CpuRefreshKind::everything()),
     );
     s.refresh_all();
-    Mutex::new(s)
-});
+    s
+}
+
+/// Lock the global `System`, recovering from a poisoned mutex by
+/// reinitializing the inner `System` and returning a valid guard.
+fn lock_sys() -> MutexGuard<'static, System> {
+    match SYS.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            eprintln!("SYS mutex was poisoned; repairing and continuing.");
+            let mut guard = poisoned.into_inner();
+            *guard = new_system();
+            guard
+        }
+    }
+}
 
 fn main() {
+    install_panic_hook();
+
     unsafe {
         let _pool = NSAutoreleasePool::new(nil);
 
@@ -83,22 +130,25 @@ fn main() {
         let status_item_ptr = UiObj::from_raw(status_item);
         status_item_set_menu(&status_item_ptr, &menu);
 
-        // No extra StrongPtr::retain needed; UiObj owns & retains.
-
         let ui = UiHandles { button, item };
 
         // ---- Schedule a repeating NSTimer (main thread) ----
         // macOS 10.12+: +[NSTimer scheduledTimerWithTimeInterval:repeats:block:]
         let tick = ConcreteBlock::new(move |_: id| {
             assert_main_thread();
-            let _pool = NSAutoreleasePool::new(nil);
+            // Make sure a panic inside this block doesn't unwind into Obj‑C:
+            let _ = std::panic::catch_unwind(|| {
+                let _pool = NSAutoreleasePool::new(nil);
 
-            let (cpu, used_gb, total_gb) = sample();
-            let title = format!("CPU {:>4.1}%  MEM {:>4.1}/{:>4.1}G", cpu, used_gb, total_gb);
-            let details = format!("CPU:  {:.1}%\nMem:  {:.1}/{:.1} GB", cpu, used_gb, total_gb);
+                let (cpu, used_gb, total_gb) = sample();
+                let title =
+                    format!("CPU {:>4.1}%  MEM {:>4.1}/{:>4.1}G", cpu, used_gb, total_gb);
+                let details =
+                    format!("CPU:  {:.1}%\nMem:  {:.1}/{:.1} GB", cpu, used_gb, total_gb);
 
-            set_button_title(&ui.button, &title);
-            set_menu_item_title(&ui.item, &details);
+                set_button_title(&ui.button, &title);
+                set_menu_item_title(&ui.item, &details);
+            });
         })
         .copy(); // Move to heap; NSTimer retains it
 
@@ -116,10 +166,7 @@ fn main() {
 /* ---------------- sampling (pure Rust/sysinfo) ---------------- */
 
 fn sample() -> (f32, f32, f32) {
-    let mut sys = match SYS.lock() {
-        Ok(g) => g,
-        Err(poisoned) => poisoned.into_inner(),
-    };
+    let mut sys = lock_sys();
 
     sys.refresh_cpu();
     sys.refresh_memory();
