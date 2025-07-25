@@ -64,6 +64,8 @@ pub fn status_item_set_menu(_mt: &MainThreadToken, status_item: &UiObj, menu: &U
 thread_local! {
     static TIMER: RefCell<id> = RefCell::new(nil);
 }
+const RUNLOOP_COMMON: &str = "NSRunLoopCommonModes";
+const RUNLOOP_TRACK:  &str = "NSEventTrackingRunLoopMode";
 
 extern "C" fn timer_fired(_this: &Object, _cmd: Sel, _user_info: id) {
     if let Some(cb) = REFRESH_CB.get() { cb(true); }
@@ -89,8 +91,8 @@ extern "C" fn menu_will_open(this: &mut Object, _cmd: Sel, _menu: id) {
 
         // 2) Add the timer to run loop in modes that stay active during menu tracking.
         let run_loop: id = NSRunLoop::currentRunLoop();
-        let common_mode = NSString::alloc(nil).init_str("NSRunLoopCommonModes").autorelease();
-        let track_mode  = NSString::alloc(nil).init_str("NSEventTrackingRunLoopMode").autorelease();
+        let common_mode = NSString::alloc(nil).init_str(RUNLOOP_COMMON).autorelease();
+        let track_mode  = NSString::alloc(nil).init_str(RUNLOOP_TRACK).autorelease();
 
 
         let _: () = msg_send![run_loop, addTimer: timer forMode: common_mode];
@@ -115,8 +117,8 @@ extern "C" fn menu_did_close(_this: &mut Object, _cmd: Sel, _menu: id) {
 }
 
 static MENU_DELEGATE_CLASS: Lazy<&'static Class> = Lazy::new(|| unsafe {
-    let superclass = class!(NSObject);
-    let mut decl = ClassDecl::new("SysmonMenuDelegate", superclass)
+     let superclass = class!(NSObject);
+     let mut decl = ClassDecl::new("ComYournameSysmonMenuDelegate", superclass)
         .expect("Unable to declare delegate");
 
     decl.add_method(sel!(menuWillOpen:),  menu_will_open  as extern "C" fn(&mut Object, Sel, id));
@@ -145,7 +147,7 @@ extern "C" fn quit_now(this: &Object, _cmd: Sel, _sender: id) {
 
 static QUIT_CLASS: Lazy<&'static Class> = Lazy::new(|| {
     let superclass = class!(NSObject);
-    let mut decl = ClassDecl::new("SysmonQuitTarget", superclass)
+    let mut decl = ClassDecl::new("ComYournameSysmonQuitTarget", superclass)
         .expect("Unable to declare SysmonQuitTarget");
 
     // Only this part requires unsafe.
