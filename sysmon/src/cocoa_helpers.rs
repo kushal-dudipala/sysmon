@@ -5,7 +5,7 @@ use objc::declare::ClassDecl;
 use objc::runtime::{Class, Object, Sel};
 use once_cell::sync::{Lazy, OnceCell};
 use std::cell::RefCell;
-use cocoa::appkit::{NSApplication, NSMenuItem};
+use cocoa::appkit::NSMenuItem;
 use crate::types::{MainThreadToken, UiObj};
 
 /* ---------------- Refresh callback plumbing ---------------- */
@@ -137,12 +137,12 @@ extern "C" fn quit_now(this: &Object, _cmd: Sel, _sender: id) {
     }
 }
 
-static QUIT_CLASS: Lazy<&'static Class> = Lazy::new(|| unsafe {
+static QUIT_CLASS: Lazy<&'static Class> = Lazy::new(|| {
     let superclass = class!(NSObject);
     let mut decl = ClassDecl::new("SysmonQuitTarget", superclass)
         .expect("Unable to declare SysmonQuitTarget");
 
-    // add_method is unsafe per objc crate
+    // Only this part requires unsafe.
     unsafe {
         decl.add_method(sel!(quitNow:), quit_now as extern "C" fn(&Object, Sel, id));
     }
