@@ -15,21 +15,15 @@ use cocoa::appkit::{
 use cocoa::base::{id, nil, YES};
 use cocoa::foundation::NSAutoreleasePool;
 
+use block::ConcreteBlock;
 use objc::{class, msg_send, sel, sel_impl};
 
-use block::ConcreteBlock;
 use once_cell::sync::Lazy;
 use std::backtrace::Backtrace;
 use std::panic;
 use std::process;
 use std::sync::{Mutex, MutexGuard};
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
-
-#[derive(Clone)]
-struct UiHandles {
-    button: UiObj,
-    item: UiObj,
-}
 
 /* ---------------- Debug-time guard to ensure UI code stays on main thread ---------------- */
 
@@ -65,7 +59,6 @@ fn install_panic_hook() {
         }
         eprintln!("Backtrace:\n{bt}");
         eprintln!("=================================");
-        // Never unwind across Obj-C. Abort hard.
         unsafe { libc::abort() }
     }));
 }
@@ -87,8 +80,7 @@ fn new_system() -> System {
     s
 }
 
-/// Lock the global `System`, recovering from a poisoned mutex by
-/// reinitializing the inner `System` and returning a valid guard.
+/// Recover from poisoned mutexes by rebuilding the System.
 fn lock_sys() -> MutexGuard<'static, System> {
     match SYS.lock() {
         Ok(guard) => guard,
@@ -120,23 +112,14 @@ fn main() {
 
         set_button_title(&button, "sysmon");
 
-        // Menu + first line
+        // Menu + first line (live metrics)
         let item = new_menu_item_with_title("Loading…");
 
-        let menu_id: id = NSMenu::new(nil).autorelease();
-        let menu = UiObj::from_raw(menu_id);
-        menu_add_item(&menu, &item);
-
-        let status_item_ptr = UiObj::from_raw(status_item);
-        status_item_set_menu(&status_item_ptr, &menu);
-
-        let ui = UiHandles { button, item };
-
         // ---- Schedule a repeating NSTimer (main thread) ----
-        // macOS 10.12+: +[NSTimer scheduledTimerWithTimeInterval:repeats:block:]
+        let ui_button = button.clone();
+        let ui_item = item.clone();
         let tick = ConcreteBlock::new(move |_: id| {
             assert_main_thread();
-            // Make sure a panic inside this block doesn't unwind into Obj‑C:
             let _ = std::panic::catch_unwind(|| {
                 let _pool = NSAutoreleasePool::new(nil);
 
@@ -146,18 +129,30 @@ fn main() {
                 let details =
                     format!("CPU:  {:.1}%\nMem:  {:.1}/{:.1} GB", cpu, used_gb, total_gb);
 
-                set_button_title(&ui.button, &title);
-                set_menu_item_title(&ui.item, &details);
+                set_button_title(&ui_button, &title);
+                set_menu_item_title(&ui_item, &details);
             });
         })
         .copy(); // Move to heap; NSTimer retains it
 
         let interval: f64 = 1.0;
-        let _: id = msg_send![class!(NSTimer),
+        let timer: id = msg_send![class!(NSTimer),
             scheduledTimerWithTimeInterval: interval
             repeats: YES
             block: &*tick
         ];
+
+        // Build menu & add items
+        let menu_id: id = NSMenu::new(nil).autorelease();
+        let menu = UiObj::from_raw(menu_id);
+        menu_add_item(&menu, &item);
+
+        // Quit item (graceful) — now provided by cocoa_helpers
+        let quit_item = make_quit_menu_item("Quit sysmon", timer);
+        menu_add_item(&menu, &quit_item);
+
+        let status_item_ptr = UiObj::from_raw(status_item);
+        status_item_set_menu(&status_item_ptr, &menu);
 
         app.run();
     }
@@ -172,7 +167,7 @@ fn sample() -> (f32, f32, f32) {
     sys.refresh_memory();
 
     let cpu = sys.global_cpu_info().cpu_usage();
-    let used_gib = bytes_to_gb(sys.used_memory());
-    let total_gib = bytes_to_gb(sys.total_memory());
-    (cpu, used_gib, total_gib)
+    let used_gb = bytes_to_gb(sys.used_memory());
+    let total_gb = bytes_to_gb(sys.total_memory());
+    (cpu, used_gb, total_gb)
 }
