@@ -12,14 +12,12 @@ use cocoa::appkit::{
     NSApplication, NSApplicationActivationPolicyAccessory, NSMenu, NSStatusBar,
     NSVariableStatusItemLength,
 };
-use cocoa::base::{id, nil, YES};
+use cocoa::base::{id, nil};
 use cocoa::foundation::NSAutoreleasePool;
-
-use block::ConcreteBlock;
-use objc::{class, msg_send, sel, sel_impl};
 
 use once_cell::sync::Lazy;
 use std::backtrace::Backtrace;
+use std::cell::RefCell;
 use std::panic;
 use std::sync::{Mutex, MutexGuard};
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
@@ -46,7 +44,7 @@ fn install_panic_hook() {
     }));
 }
 
-/* ---------------- Global sysinfo cache (pure data, Send + Sync OK) ---------------- */
+/* ---------------- Global sysinfo cache ---------------- */
 
 static SYS: Lazy<Mutex<System>> = Lazy::new(|| {
     let s = new_system();
@@ -63,7 +61,6 @@ fn new_system() -> System {
     s
 }
 
-/// Recover from poisoned mutexes by rebuilding the System.
 fn lock_sys() -> MutexGuard<'static, System> {
     match SYS.lock() {
         Ok(guard) => guard,
@@ -75,6 +72,50 @@ fn lock_sys() -> MutexGuard<'static, System> {
         }
     }
 }
+
+/* ---------------- UI state we mutate on menu open ---------------- */
+
+struct UiState {
+    button: UiObj,
+    cpu_item: UiObj,
+    mem_item: UiObj,
+    _delegate: UiObj, // keep it alive
+}
+
+thread_local! {
+    static UI: RefCell<Option<UiState>> = RefCell::new(None);
+}
+
+fn set_ui_state(state: UiState) {
+    UI.with(|slot| *slot.borrow_mut() = Some(state));
+}
+
+fn with_ui_state<F: FnOnce(&UiState)>(f: F) {
+    UI.with(|slot| {
+        if let Some(ref ui) = *slot.borrow() {
+            f(ui);
+        }
+    });
+}
+
+/* ---------------- Refresh logic called from delegate ---------------- */
+
+fn refresh_on_click() {
+    let mt = MainThreadToken::acquire();
+    with_ui_state(|ui| {
+        let (cpu, used_gb, total_gb) = sample();
+
+        set_menu_item_title(&mt, &ui.cpu_item, &format!("CPU:  {:.1}%", cpu));
+        set_menu_item_title(
+            &mt,
+            &ui.mem_item,
+            &format!("Mem:  {:.1}/{:.1} GB", used_gb, total_gb),
+        );
+        // The status button title stays as 🧪
+    });
+}
+
+/* ---------------- main ---------------- */
 
 fn main() {
     install_panic_hook();
@@ -95,62 +136,44 @@ fn main() {
         debug_assert!(!raw_button.is_null(), "status_button returned null");
         let button = UiObj::from_raw_retained(raw_button);
 
-        set_button_title(&mt, &button, "sysmon");
+        // Menubar emoji
+        set_button_title(&mt, &button, "🧪");
 
-        // Menu + first line (live metrics)
-        let item = new_menu_item_with_title(&mt, "Loading…");
-
-        // ---- Schedule a repeating NSTimer (main thread) ----
-        let ui_button = button.clone_retained();
-        let ui_item = item.clone_retained();
-
-        let update_ui = move || {
-            let (cpu, used_gb, total_gb) = sample();
-            let title = format!("CPU {:>4.1}%  MEM {:>4.1}/{:>4.1}G", cpu, used_gb, total_gb);
-            let details = format!("CPU:  {:.1}%\nMem:  {:.1}/{:.1} GB", cpu, used_gb, total_gb);
-            let mt = MainThreadToken::acquire();
-            set_button_title(&mt, &ui_button, &title);
-            set_menu_item_title(&mt, &ui_item, &details);
-        };
-
-        let tick = ConcreteBlock::new(move |_: id| {
-            let _pool = NSAutoreleasePool::new(nil);
-
-            #[cfg(panic = "unwind")]
-            {
-                let _ = std::panic::catch_unwind(|| update_ui());
-            }
-            #[cfg(panic = "abort")]
-            {
-                update_ui();
-            }
-        })
-        .copy(); // Move to heap; NSTimer retains it
-
-        let interval: f64 = 1.0;
-        let timer: id = msg_send![class!(NSTimer),
-            scheduledTimerWithTimeInterval: interval
-            repeats: YES
-            block: &*tick
-        ];
-
-        // Build menu & add items
+        // Build menu
         let menu_id: id = NSMenu::new(nil).autorelease();
         let menu = UiObj::from_raw_retained(menu_id);
-        menu_add_item(&mt, &menu, &item);
 
-        // Quit item (graceful)
-        let quit_item = make_quit_menu_item(&mt, "Quit sysmon", timer);
+        // One line per metric
+        let cpu_item = new_menu_item_with_title(&mt, "CPU:  …");
+        let mem_item = new_menu_item_with_title(&mt, "Mem:  …");
+
+        menu_add_item(&mt, &menu, &cpu_item);
+        menu_add_item(&mt, &menu, &mem_item);
+
+        // Quit
+        let quit_item = make_quit_menu_item(&mt, "Quit sysmon");
         menu_add_item(&mt, &menu, &quit_item);
 
+        // Attach delegate that refreshes when menu opens
+        set_refresh_callback(refresh_on_click);
+        let delegate = attach_menu_delegate(&mt, &menu);
+
+        // Set menu on the status item
         let status_item_ptr = UiObj::from_raw_retained(status_item);
         status_item_set_menu(&mt, &status_item_ptr, &menu);
+
+        set_ui_state(UiState {
+            button,
+            cpu_item,
+            mem_item,
+            _delegate: delegate,
+        });
 
         app.run();
     }
 }
 
-/* ---------------- sampling (pure Rust/sysinfo) ---------------- */
+/* ---------------- sampling ---------------- */
 
 fn sample() -> (f32, f32, f32) {
     let mut sys = lock_sys();
@@ -159,7 +182,7 @@ fn sample() -> (f32, f32, f32) {
     sys.refresh_memory();
 
     let cpu = sys.global_cpu_info().cpu_usage();
-    let used_gb = bytes_to_gb(sys.used_memory());   // you said ignore the unit bug
+    let used_gb = bytes_to_gb(sys.used_memory());   // you asked to ignore the unit bug
     let total_gb = bytes_to_gb(sys.total_memory());
     (cpu, used_gb, total_gb)
 }

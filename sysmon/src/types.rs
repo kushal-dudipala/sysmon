@@ -3,7 +3,6 @@ use objc::rc::StrongPtr;
 use std::fmt;
 
 /// Zero-sized token proving you're on the main thread.
-/// Constructing it checks (and aborts if violated).
 pub struct MainThreadToken(());
 
 extern "C" {
@@ -29,11 +28,11 @@ pub struct UiObj(StrongPtr);
 impl UiObj {
     /// # Safety
     /// `obj` must be a valid Objective‑C object pointer.
-    /// This retains it (+1). If `obj` was autoreleased, this intentionally
-    /// over-retains and will live for the app lifetime (acceptable for this app).
+    /// This retains it (+1). If `obj` was autoreleased, we keep the extra retain
+    /// for the process lifetime (acceptable for this app).
     pub unsafe fn from_raw_retained(obj: id) -> Self {
-        // explicit unsafe block required by `unsafe_op_in_unsafe_fn`
-         let sp = unsafe { StrongPtr::retain(obj) };
+        // required because of `#![deny(unsafe_op_in_unsafe_fn)]`
+        let sp = unsafe { StrongPtr::retain(obj) };
         UiObj(sp)
     }
 
