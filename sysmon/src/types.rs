@@ -41,10 +41,7 @@ impl UiObj {
         *self.0
     }
 
-    /// Explicit clone that retains (+1).
-    pub fn clone_retained(&self) -> Self {
-        UiObj(self.0.clone())
-    }
+    
 }
 
 impl fmt::Debug for UiObj {
