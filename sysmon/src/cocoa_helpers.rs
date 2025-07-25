@@ -20,26 +20,31 @@ pub fn status_button(_mt: &MainThreadToken, status_item: id) -> id {
     unsafe { msg_send![status_item, button] }
 }
 
+// set_button_title
 pub fn set_button_title(_mt: &MainThreadToken, ptr: &UiObj, title: &str) {
     unsafe {
-        let s = NSString::alloc(nil).init_str(title);
+        let s = NSString::alloc(nil).init_str(title).autorelease();
         let _: () = msg_send![ptr.as_id(), setTitle: s];
     }
 }
 
+
+// set_menu_item_title
 pub fn set_menu_item_title(_mt: &MainThreadToken, ptr: &UiObj, title: &str) {
     unsafe {
-        let s = NSString::alloc(nil).init_str(title);
+        let s = NSString::alloc(nil).init_str(title).autorelease();
         let _: () = msg_send![ptr.as_id(), setTitle: s];
     }
 }
 
+
+// new_menu_item_with_title
 pub fn new_menu_item_with_title(_mt: &MainThreadToken, title: &str) -> UiObj {
     unsafe {
         let _pool = NSAutoreleasePool::new(nil);
         let item: id = NSMenuItem::new(nil).autorelease();
         assert!(!item.is_null());
-        let s = NSString::alloc(nil).init_str(title);
+        let s = NSString::alloc(nil).init_str(title).autorelease();
         let _: () = msg_send![item, setTitle: s];
         let _: () = msg_send![item, setEnabled: YES];
         UiObj::from_raw_retained(item)
@@ -84,8 +89,9 @@ extern "C" fn menu_will_open(this: &mut Object, _cmd: Sel, _menu: id) {
 
         // 2) Add the timer to run loop in modes that stay active during menu tracking.
         let run_loop: id = NSRunLoop::currentRunLoop();
-        let common_mode = NSString::alloc(nil).init_str("NSRunLoopCommonModes");
-        let track_mode  = NSString::alloc(nil).init_str("NSEventTrackingRunLoopMode");
+        let common_mode = NSString::alloc(nil).init_str("NSRunLoopCommonModes").autorelease();
+        let track_mode  = NSString::alloc(nil).init_str("NSEventTrackingRunLoopMode").autorelease();
+
 
         let _: () = msg_send![run_loop, addTimer: timer forMode: common_mode];
         let _: () = msg_send![run_loop, addTimer: timer forMode: track_mode];
@@ -154,21 +160,17 @@ fn make_quit_target() -> id {
     unsafe { msg_send![*QUIT_CLASS, new] }
 }
 
-/// Create a "Quit" NSMenuItem with a retained target and action.
-/// Return both so the caller can keep the target alive (store it in UiState).
+// make_quit_menu_item
 pub fn make_quit_menu_item(_mt: &MainThreadToken, title: &str) -> (UiObj, UiObj) {
     unsafe {
-        let title_ns = NSString::alloc(nil).init_str(title);
-        let key_equiv = NSString::alloc(nil).init_str("");
-
+        let title_ns = NSString::alloc(nil).init_str(title).autorelease();
+        let key_equiv = NSString::alloc(nil).init_str("").autorelease();
         let item: id = NSMenuItem::alloc(nil)
             .initWithTitle_action_keyEquivalent_(title_ns, sel!(quitNow:), key_equiv)
             .autorelease();
-
         let target = make_quit_target();
         let _: () = msg_send![item, setTarget: target];
         let _: () = msg_send![item, setEnabled: YES];
-
         (UiObj::from_raw_retained(item), UiObj::from_raw_retained(target))
     }
 }
