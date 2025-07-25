@@ -1,16 +1,25 @@
 use cocoa::appkit::{NSApplication, NSMenuItem};
 use cocoa::base::{id, nil};
 use cocoa::foundation::{NSAutoreleasePool, NSString};
+use dispatch::Queue;
 use objc::{class, msg_send, sel, sel_impl};
 use objc::declare::ClassDecl;
 use objc::runtime::{Class, Object, Sel};
 use once_cell::sync::{Lazy, OnceCell};
+use std::ffi::c_void;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+use std::thread;
+use std::time::Duration;
 
 use crate::types::{MainThreadToken, UiObj};
 
 /* ---------------- Refresh callback plumbing ---------------- */
 
-type RefreshFn = fn();
+/// `opened = true` while menu is open, false when it closes.
+type RefreshFn = fn(bool);
 
 static REFRESH_CB: OnceCell<RefreshFn> = OnceCell::new();
 
@@ -65,7 +74,6 @@ pub fn status_item_set_menu(_mt: &MainThreadToken, status_item: &UiObj, menu: &U
 
 extern "C" fn quit_gracefully(this: &Object, _cmd: Sel, _sender: id) {
     unsafe {
-        // Terminate the app
         let app = NSApplication::sharedApplication(nil);
         let _: () = msg_send![app, terminate: this];
     }
@@ -102,11 +110,72 @@ pub fn make_quit_menu_item(_mt: &MainThreadToken, title: &str) -> UiObj {
     }
 }
 
-/* ---------------- NSMenuDelegate to refresh on click ---------------- */
+/* ---------------- NSMenuDelegate using a background Rust thread ---------------- */
 
-extern "C" fn menu_will_open(_this: &Object, _cmd: Sel, _menu: id) {
+/// Boxed thread-control handle we store in an ivar as a raw pointer.
+struct ThreadTimer {
+    stop: Arc<AtomicBool>,
+    handle: Option<thread::JoinHandle<()>>,
+}
+type ThreadPtr = *mut c_void;
+
+extern "C" fn menu_will_open(this: &mut Object, _cmd: Sel, _menu: id) {
+    // Tell app we opened (do an immediate refresh)
     if let Some(cb) = REFRESH_CB.get() {
-        cb();
+        cb(true);
+    }
+
+    unsafe {
+        // Stop any previous timer thread
+        let existing: ThreadPtr = *this.get_ivar("thread_ptr");
+        if !existing.is_null() {
+            let mut boxed: Box<ThreadTimer> = Box::from_raw(existing as *mut ThreadTimer);
+            boxed.stop.store(true, Ordering::Relaxed);
+            if let Some(h) = boxed.handle.take() {
+                let _ = h.join();
+            }
+        }
+
+        // Spawn a new background thread that pings main every 1s
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_clone = stop.clone();
+
+        let handle = thread::spawn(move || {
+            let q = Queue::main();
+            while !stop_clone.load(Ordering::Relaxed) {
+                // hop back to main to do the UI refresh
+                if let Some(cb) = REFRESH_CB.get() {
+                    q.exec_async(move || cb(true));
+                }
+                thread::sleep(Duration::from_secs(1));
+            }
+        });
+
+        let tt = ThreadTimer {
+            stop,
+            handle: Some(handle),
+        };
+        let raw: ThreadPtr = Box::into_raw(Box::new(tt)) as ThreadPtr;
+        this.set_ivar("thread_ptr", raw);
+    }
+}
+
+extern "C" fn menu_did_close(this: &mut Object, _cmd: Sel, _menu: id) {
+    // Optionally notify (we don't use opened=false in refresh right now, but it's here)
+    if let Some(cb) = REFRESH_CB.get() {
+        cb(false);
+    }
+
+    unsafe {
+        let raw: ThreadPtr = *this.get_ivar("thread_ptr");
+        if !raw.is_null() {
+            let mut boxed: Box<ThreadTimer> = Box::from_raw(raw as *mut ThreadTimer);
+            boxed.stop.store(true, Ordering::Relaxed);
+            if let Some(h) = boxed.handle.take() {
+                let _ = h.join();
+            }
+            this.set_ivar::<ThreadPtr>("thread_ptr", std::ptr::null_mut::<c_void>() as ThreadPtr);
+        }
     }
 }
 
@@ -115,9 +184,16 @@ static MENU_DELEGATE_CLASS: Lazy<&'static Class> = Lazy::new(|| unsafe {
     let mut decl =
         ClassDecl::new("SysmonMenuDelegate", superclass).expect("Unable to declare delegate");
 
+    // dispatch-thread controller as void*
+    decl.add_ivar::<ThreadPtr>("thread_ptr");
+
     decl.add_method(
         sel!(menuWillOpen:),
-        menu_will_open as extern "C" fn(&Object, Sel, id),
+        menu_will_open as extern "C" fn(&mut Object, Sel, id),
+    );
+    decl.add_method(
+        sel!(menuDidClose:),
+        menu_did_close as extern "C" fn(&mut Object, Sel, id),
     );
 
     decl.register()
@@ -127,6 +203,10 @@ static MENU_DELEGATE_CLASS: Lazy<&'static Class> = Lazy::new(|| unsafe {
 pub fn attach_menu_delegate(_mt: &MainThreadToken, menu: &UiObj) -> UiObj {
     unsafe {
         let delegate: id = msg_send![*MENU_DELEGATE_CLASS, new];
+        let delegate_obj: &mut Object = &mut *(delegate as *mut Object);
+        delegate_obj.set_ivar::<ThreadPtr>("thread_ptr", std::ptr::null_mut::<c_void>() as ThreadPtr);
+
+
         let _: () = msg_send![menu.as_id(), setDelegate: delegate];
 
         UiObj::from_raw_retained(delegate)

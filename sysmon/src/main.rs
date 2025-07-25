@@ -1,6 +1,7 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 mod cocoa_helpers;
+mod ioreport;
 mod types;
 mod units;
 
@@ -73,12 +74,14 @@ fn lock_sys() -> MutexGuard<'static, System> {
     }
 }
 
-/* ---------------- UI state we mutate on menu open ---------------- */
+/* ---------------- UI state ---------------- */
 
 struct UiState {
-    button: UiObj,
+    _button: UiObj,
     cpu_item: UiObj,
     mem_item: UiObj,
+    cpu_t_item: UiObj,
+    gpu_t_item: UiObj,
     _delegate: UiObj, // keep it alive
 }
 
@@ -98,20 +101,41 @@ fn with_ui_state<F: FnOnce(&UiState)>(f: F) {
     });
 }
 
-/* ---------------- Refresh logic called from delegate ---------------- */
+/* ---------------- Refresh (called from thread via main queue) ---------------- */
 
-fn refresh_on_click() {
+fn refresh(_opened: bool) {
     let mt = MainThreadToken::acquire();
     with_ui_state(|ui| {
         let (cpu, used_gb, total_gb) = sample();
+        let cpu_t = ioreport::cpu_temp_c();
+        let gpu_t = ioreport::gpu_temp_c();
 
-        set_menu_item_title(&mt, &ui.cpu_item, &format!("CPU:  {:.1}%", cpu));
+        set_menu_item_title(&mt, &ui.cpu_item, &format!("CPU:   {:.1}%", cpu));
         set_menu_item_title(
             &mt,
             &ui.mem_item,
-            &format!("Mem:  {:.1}/{:.1} GB", used_gb, total_gb),
+            &format!("Mem:   {:.1}/{:.1} GB", used_gb, total_gb),
         );
-        // The status button title stays as 🧪
+        set_menu_item_title(
+            &mt,
+            &ui.cpu_t_item,
+            &format!(
+                "CPU T: {}",
+                cpu_t
+                    .map(|t| format!("{t:.1} °C"))
+                    .unwrap_or_else(|| "—".into())
+            ),
+        );
+        set_menu_item_title(
+            &mt,
+            &ui.gpu_t_item,
+            &format!(
+                "GPU T: {}",
+                gpu_t
+                    .map(|t| format!("{t:.1} °C"))
+                    .unwrap_or_else(|| "—".into())
+            ),
+        );
     });
 }
 
@@ -144,18 +168,22 @@ fn main() {
         let menu = UiObj::from_raw_retained(menu_id);
 
         // One line per metric
-        let cpu_item = new_menu_item_with_title(&mt, "CPU:  …");
-        let mem_item = new_menu_item_with_title(&mt, "Mem:  …");
+        let cpu_item = new_menu_item_with_title(&mt, "CPU:   …");
+        let mem_item = new_menu_item_with_title(&mt, "Mem:   …");
+        let cpu_t_item = new_menu_item_with_title(&mt, "CPU T: …");
+        let gpu_t_item = new_menu_item_with_title(&mt, "GPU T: …");
 
         menu_add_item(&mt, &menu, &cpu_item);
         menu_add_item(&mt, &menu, &mem_item);
+        menu_add_item(&mt, &menu, &cpu_t_item);
+        menu_add_item(&mt, &menu, &gpu_t_item);
 
         // Quit
         let quit_item = make_quit_menu_item(&mt, "Quit sysmon");
         menu_add_item(&mt, &menu, &quit_item);
 
-        // Attach delegate that refreshes when menu opens
-        set_refresh_callback(refresh_on_click);
+        // Attach delegate that starts/stops the background thread
+        set_refresh_callback(refresh);
         let delegate = attach_menu_delegate(&mt, &menu);
 
         // Set menu on the status item
@@ -163,9 +191,11 @@ fn main() {
         status_item_set_menu(&mt, &status_item_ptr, &menu);
 
         set_ui_state(UiState {
-            button,
+            _button: button,
             cpu_item,
             mem_item,
+            cpu_t_item,
+            gpu_t_item,
             _delegate: delegate,
         });
 
@@ -182,7 +212,7 @@ fn sample() -> (f32, f32, f32) {
     sys.refresh_memory();
 
     let cpu = sys.global_cpu_info().cpu_usage();
-    let used_gb = bytes_to_gb(sys.used_memory());   // you asked to ignore the unit bug
+    let used_gb = bytes_to_gb(sys.used_memory());   // you said: ignore the unit bug
     let total_gb = bytes_to_gb(sys.total_memory());
     (cpu, used_gb, total_gb)
 }
