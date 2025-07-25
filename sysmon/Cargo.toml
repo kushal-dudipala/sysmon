@@ -11,6 +11,7 @@ once_cell = "1.19"
 lazy_static = "1.4"
 libc = "0.2"
 dispatch = "0.2"
+block = "0.1"
 
 [profile.release]
 panic = "abort"

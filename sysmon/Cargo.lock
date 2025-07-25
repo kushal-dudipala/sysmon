@@ -267,6 +267,7 @@ dependencies = [
 name = "sysmon"
 version = "0.1.0"
 dependencies = [
+ "block",
  "cocoa",
  "dispatch",
  "lazy_static",
