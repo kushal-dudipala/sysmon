@@ -8,8 +8,6 @@ mod net;
 
 use crate::cocoa_helpers::*;
 use crate::types::{MainThreadToken, UiObj};
-use units::bytes_to_gb;
-use units::fmt_rate;
 use cocoa::appkit::{
     NSApplication, NSApplicationActivationPolicyAccessory, NSMenu, NSStatusBar,
     NSVariableStatusItemLength,
@@ -18,17 +16,17 @@ use cocoa::base::{id, nil};
 use cocoa::foundation::NSAutoreleasePool;
 
 use once_cell::sync::Lazy;
-use std::backtrace::Backtrace;
 use std::cell::RefCell;
 use std::panic;
 use std::sync::{Mutex, MutexGuard};
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
 
-/* ---------------- Panic hook ---------------- */
+use units::{bytes_to_gb, fmt_rate};
+
+/* ---------------- Panic hook (abort-fast on panic) ---------------- */
 
 fn install_panic_hook() {
     panic::set_hook(Box::new(|info| {
-        let bt = Backtrace::force_capture();
         eprintln!("========= sysmon PANIC =========");
         if let Some(loc) = info.location() {
             eprintln!("Location: {}:{}", loc.file(), loc.line());
@@ -40,7 +38,6 @@ fn install_panic_hook() {
         } else {
             eprintln!("Payload: <non-string panic payload>");
         }
-        eprintln!("Backtrace:\n{bt}");
         eprintln!("=================================");
         unsafe { libc::abort() }
     }));
@@ -84,8 +81,8 @@ struct UiState {
     cpu_t_item: UiObj,
     gpu_t_item: UiObj,
     net_item: UiObj,
-    _delegate: UiObj, 
-    _quit_target: UiObj,
+    _delegate: UiObj,     // retain the NSTimer menu delegate
+    _quit_target: UiObj,  // retain the quit target so selector stays valid
 }
 
 thread_local! {
@@ -104,7 +101,7 @@ fn with_ui_state<F: FnOnce(&UiState)>(f: F) {
     });
 }
 
-/* ---------------- Refresh (called from thread via main queue) ---------------- */
+/* ---------------- Refresh (timer fires while menu is open) ---------------- */
 
 fn refresh(_opened: bool) {
     let mt = MainThreadToken::acquire();
@@ -115,19 +112,13 @@ fn refresh(_opened: bool) {
         let (rx_bps, tx_bps) = net::net_usage_bps();
 
         set_menu_item_title(&mt, &ui.cpu_item, &format!("CPU:   {:.1}%", cpu));
-        set_menu_item_title(
-            &mt,
-            &ui.mem_item,
-            &format!("Mem:   {:.1}/{:.1} GB", used_gb, total_gb),
-        );
+        set_menu_item_title(&mt, &ui.mem_item, &format!("Mem:   {:.1}/{:.1} GB", used_gb, total_gb));
         set_menu_item_title(
             &mt,
             &ui.cpu_t_item,
             &format!(
                 "CPU T: {}",
-                cpu_t
-                    .map(|t| format!("{t:.1} °C"))
-                    .unwrap_or_else(|| "—".into())
+                cpu_t.map(|t| format!("{t:.1} °C")).unwrap_or_else(|| "—".into())
             ),
         );
         set_menu_item_title(
@@ -135,9 +126,7 @@ fn refresh(_opened: bool) {
             &ui.gpu_t_item,
             &format!(
                 "GPU T: {}",
-                gpu_t
-                    .map(|t| format!("{t:.1} °C"))
-                    .unwrap_or_else(|| "—".into())
+                gpu_t.map(|t| format!("{t:.1} °C")).unwrap_or_else(|| "—".into())
             ),
         );
         set_menu_item_title(
@@ -179,8 +168,8 @@ fn main() {
         // One line per metric
         let cpu_item = new_menu_item_with_title(&mt, "CPU:   …");
         let mem_item = new_menu_item_with_title(&mt, "Mem:   …");
-        let cpu_t_item = new_menu_item_with_title(&mt, "CPU T:   …");
-        let gpu_t_item = new_menu_item_with_title(&mt, "GPU T:   …");
+        let cpu_t_item = new_menu_item_with_title(&mt, "CPU T: …");
+        let gpu_t_item = new_menu_item_with_title(&mt, "GPU T: …");
         let net_item = new_menu_item_with_title(&mt, "Net:   …");
 
         menu_add_item(&mt, &menu, &cpu_item);
@@ -189,11 +178,11 @@ fn main() {
         menu_add_item(&mt, &menu, &gpu_t_item);
         menu_add_item(&mt, &menu, &net_item);
 
-        // Quit
+        // Quit (single, canonical quit path; target retained in UiState)
         let (quit_item, quit_target) = make_quit_menu_item(&mt, "Quit sysmon");
         menu_add_item(&mt, &menu, &quit_item);
 
-        // Attach delegate that starts/stops the background thread
+        // Attach NSTimer-based delegate that refreshes while the menu is open
         set_refresh_callback(refresh);
         let delegate = attach_menu_delegate(&mt, &menu);
 
@@ -220,11 +209,11 @@ fn main() {
 
 fn sample() -> (f32, f32, f32) {
     let mut sys = lock_sys();
-    sys.refresh_cpu_all();           
-    sys.refresh_memory();         
+    sys.refresh_cpu_all();
+    sys.refresh_memory();
 
     let cpu = sys.global_cpu_usage();
-    let used_gb  = bytes_to_gb(sys.used_memory());
+    let used_gb = bytes_to_gb(sys.used_memory());
     let total_gb = bytes_to_gb(sys.total_memory());
 
     (cpu, used_gb, total_gb)
