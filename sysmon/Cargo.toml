@@ -20,6 +20,6 @@ overflow-checks = true
 [package.metadata.bundle]
 name = "sysmon"
 identifier = "com.yourname.sysmon"
-icon = []              
+icon = ["macos/sysmon.icns"]             
 resources = ["macos/Info.plist"]
 version = "0.1.0"
