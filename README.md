@@ -2,7 +2,7 @@
 <p align="center">
     <img src="sysmon/images/logo.png" alt="Sysmon Logo" width="120" />
 </p>
-I sat down one day trying to find a system monitor I liked, and I couldn't. So I made one.
+I sat down one day trying to find a utility monitor I liked, and I couldn't. So I made one.
 
 Sysmon is a lightweight, open-source, privacy‑respecting macOS menu‑bar system monitor written in Rust. Shows CPU usage, memory usage, and network throughput. No daemons, no snooping, no hassle.
 
@@ -59,7 +59,7 @@ cd sysmon/sysmon
 
 **Note**: For unsigned apps, first run via Control‑click → Open to bypass Gatekeeper.
 
-**Expected performance**: ~26–33 MB RSS, ~0–1% CPU when idle (brief spikes when menu is open).
+**Performance of app**: ~26–33 MB RSS, ~0–1% CPU when idle (brief spikes when menu is open).
 
 ---
 
@@ -147,6 +147,10 @@ cargo clippy
 ## Contributing
 
 This program was written in like 2 days by a sleepy undergrad. if you look for long enough, youll find bugs; please let me know!
+
+## Future Expansions
+
+Finding a way to add temp trackers on mac is really tricky without betraying the ideals behind sysmon. To be done nextime!
 
 ## Support
 
