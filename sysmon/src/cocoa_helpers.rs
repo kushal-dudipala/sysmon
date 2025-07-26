@@ -100,7 +100,10 @@ extern "C" fn menu_will_open(this: &mut Object, _cmd: Sel, _menu: id) {
 
         TIMER.with(|slot| {
             let t = *slot.borrow();
-            if t != nil { let _: () = msg_send![t, invalidate]; }
+            if t != nil {
+                let _: () = msg_send![t, invalidate];
+            }
+            slot.replace(timer);
         });
     }
 }
