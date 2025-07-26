@@ -2,7 +2,7 @@
 <p align="center">
     <img src="sysmon/images/logo.png" alt="Sysmon Logo" width="120" />
 </p>
-I sat down one day trying to find a utility monitor I liked, and I couldn't. So I made one.
+I sat down one day trying to find a utility monitor I liked for macbooks, and I couldn't. So I made one.
 
 Sysmon is a lightweight, open-source, privacy‑respecting macOS menu‑bar system monitor written in Rust. Shows CPU usage, memory usage, and network throughput. No daemons, no snooping, no hassle.
 
@@ -36,7 +36,7 @@ Sysmon is a lightweight, open-source, privacy‑respecting macOS menu‑bar syst
 
 ### Super Quick Start
 
-Download sysmon.zip from root dir, unzip, and use!
+Download sysmon.zip from root dir, unzip, and use! You will need to verify that the app is safe to use in system-settings.
 
 ### Quick Start from source
 
