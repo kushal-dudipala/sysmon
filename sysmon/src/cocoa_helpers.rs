@@ -98,7 +98,10 @@ extern "C" fn menu_will_open(this: &mut Object, _cmd: Sel, _menu: id) {
         let _: () = msg_send![run_loop, addTimer: timer forMode: common_mode];
         let _: () = msg_send![run_loop, addTimer: timer forMode: track_mode];
 
-        TIMER.with(|slot| slot.replace(timer));
+        TIMER.with(|slot| {
+            let t = *slot.borrow();
+            if t != nil { let _: () = msg_send![t, invalidate]; }
+        });
     }
 }
 
