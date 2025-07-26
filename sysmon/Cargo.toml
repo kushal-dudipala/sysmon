@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 cocoa = "0.25"
-objc = "0.2.7"
+objc = { version = "0.2.7", features = ["exception"] }
 sysinfo = "0.36"
 once_cell = "1.19"
 libc = "0.2"
