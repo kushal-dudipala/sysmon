@@ -34,7 +34,11 @@ Sysmon is a lightweight, open-source, privacy‑respecting macOS menu‑bar syst
 
 ## Build & Run
 
-### Quick Start (from source)
+### Super Quick Start
+
+Download sysmon.zip from root dir, unzip, and use!
+
+### Quick Start from source
 
 ```bash
 git clone https://github.com/kushaldudipala/sysmon.git
