@@ -1,3 +1,4 @@
 /.vscode
 /sysmon/target
 /sysmon/sysmon.app
+/sysmon/macos/sysmon.iconset/
