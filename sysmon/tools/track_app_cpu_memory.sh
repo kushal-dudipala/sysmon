@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# macOS-only: uses BSD ps output; 100% CPU ≈ one core
+
 # Usage:
 #   ./tools/measure_app.sh <cmd> [args...]
 #   PROC_NAME=sysmon ./tools/measure_app.sh cargo run --release
