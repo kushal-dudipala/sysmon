@@ -207,7 +207,6 @@ fn main() {
         );
 
         let raw_button: id = nonnull(status_button(&mt, status_item), "status_button");
-        debug_assert!(!raw_button.is_null(), "status_button returned null");
         let button = UiObj::from_raw_retained(raw_button);
 
         // Menubar emoji
