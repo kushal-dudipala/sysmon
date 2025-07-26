@@ -19,12 +19,15 @@ BIN="${REPO_ROOT}/target/${PROFILE}/${APP}"
 APPDIR="${REPO_ROOT}/${APP}.app"
 CONTENTS="${APPDIR}/Contents"
 MACOS_DIR="${CONTENTS}/MacOS"
+RES_DIR="${CONTENTS}/Resources"
 
 echo "→ Creating app bundle at: ${APPDIR}"
 rm -rf "${APPDIR}"
 mkdir -p "${MACOS_DIR}"
 
 cp "${REPO_ROOT}/macos/Info.plist" "${CONTENTS}/Info.plist"
+mkdir -p "${RES_DIR}"                   
+cp "${REPO_ROOT}/macos/sysmon.icns" "${RES_DIR}/sysmon.icns" 
 cp "${BIN}" "${MACOS_DIR}/${APP}"
 
 # Ad‑hoc sign 
