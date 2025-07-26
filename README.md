@@ -150,7 +150,7 @@ cargo clippy
 
 ## Contributing
 
-This program was written in like 2 days by a sleepy undergrad. if you look for long enough, youll find bugs; please let me know!
+This program was written in like 2 days by a tired undergrad. if you look for long enough, youll find bugs; please let me know!
 
 ## Future Expansions
 
