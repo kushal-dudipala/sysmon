@@ -20,7 +20,6 @@ use std::cell::RefCell;
 use std::panic;
 use std::sync::{Mutex, MutexGuard};
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
-
 use units::{bytes_to_gb, fmt_rate};
 
 /* ---------------- Panic hook (abort-fast on panic) ---------------- */
@@ -159,7 +158,7 @@ fn main() {
         let button = UiObj::from_raw_retained(raw_button);
 
         // Menubar emoji
-        set_button_title(&mt, &button, "🧙");
+        set_button_title(&mt, &button, "🛠️");
 
         // Build menu
         let menu_id: id = NSMenu::new(nil).autorelease();
