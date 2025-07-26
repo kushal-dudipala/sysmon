@@ -159,7 +159,7 @@ fn main() {
         let button = UiObj::from_raw_retained(raw_button);
 
         // Menubar emoji
-        set_button_title(&mt, &button, "🧪");
+        set_button_title(&mt, &button, "🧙");
 
         // Build menu
         let menu_id: id = NSMenu::new(nil).autorelease();
