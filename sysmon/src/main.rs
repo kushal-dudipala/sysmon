@@ -38,9 +38,58 @@ fn install_panic_hook() {
             eprintln!("Payload: <non-string panic payload>");
         }
         eprintln!("=================================");
-        unsafe { libc::abort() }
+        std::process::abort();
     }));
 }
+
+fn abort_if_dyld_injection() {
+    use std::env;
+
+    const BLOCK: &[&str] = &[
+        "DYLD_INSERT_LIBRARIES",
+        "DYLD_LIBRARY_PATH",
+        "DYLD_FRAMEWORK_PATH",
+        "DYLD_FORCE_FLAT_NAMESPACE",
+        "LD_PRELOAD",
+    ];
+
+    let allow = env::var_os("SYSMON_ALLOW_UNSAFE_LAUNCH").is_some();
+
+    let mut offenders = Vec::new();
+    for (k, v) in env::vars() {
+        if BLOCK.contains(&k.as_str()) && !v.is_empty() {
+            offenders.push(format!("{k}={v}"));
+        }
+    }
+
+    if !offenders.is_empty() && !allow {
+        eprintln!(
+            "Refusing to run due to high‑risk injection env:\n  {}\
+             \nSet SYSMON_ALLOW_UNSAFE_LAUNCH=1 to bypass (not recommended).",
+            offenders.join("\n  ")
+        );
+        std::process::exit(78);
+    }
+
+    // Debug-only note for benign DYLD_* (e.g., DYLD_FALLBACK_LIBRARY_PATH)
+    #[cfg(debug_assertions)]
+    for (k, _) in env::vars() {
+        if k.starts_with("DYLD_") && !BLOCK.contains(&k.as_str()) {
+            eprintln!("Note: {k} is set (continuing).");
+        }
+    }
+}
+
+
+#[inline]
+unsafe fn nonnull(obj: cocoa::base::id, what: &str) -> cocoa::base::id {
+    if obj == cocoa::base::nil {
+        eprintln!("{what} returned nil; aborting.");
+        std::process::abort();
+    }
+    obj
+}
+
 
 /* ---------------- Global sysinfo cache ---------------- */
 
@@ -139,6 +188,7 @@ fn refresh(_opened: bool) {
 /* ---------------- main ---------------- */
 
 fn main() {
+    abort_if_dyld_injection();
     install_panic_hook();
 
     let mt = MainThreadToken::acquire();
@@ -151,9 +201,12 @@ fn main() {
 
         // Status item + button
         let status_bar: id = NSStatusBar::systemStatusBar(nil);
-        let status_item: id = status_bar.statusItemWithLength_(NSVariableStatusItemLength);
+        let status_item: id = nonnull(
+            status_bar.statusItemWithLength_(NSVariableStatusItemLength),
+            "NSStatusBar::statusItemWithLength_",
+        );
 
-        let raw_button: id = status_button(&mt, status_item);
+        let raw_button: id = nonnull(status_button(&mt, status_item), "status_button");
         debug_assert!(!raw_button.is_null(), "status_button returned null");
         let button = UiObj::from_raw_retained(raw_button);
 
@@ -161,7 +214,7 @@ fn main() {
         set_button_title(&mt, &button, "🛠️");
 
         // Build menu
-        let menu_id: id = NSMenu::new(nil).autorelease();
+        let menu_id: id = nonnull(NSMenu::new(nil).autorelease(), "NSMenu::new");
         let menu = UiObj::from_raw_retained(menu_id);
 
         // One line per metric
