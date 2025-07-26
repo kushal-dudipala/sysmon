@@ -1,4 +1,4 @@
-# Sysmon
+# Sysmon 🛠️
 <p align="center">
     <img src="sysmon/images/logo.png" alt="Sysmon Logo" width="120" />
 </p>
