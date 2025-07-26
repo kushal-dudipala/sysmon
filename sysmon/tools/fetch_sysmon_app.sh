@@ -33,7 +33,7 @@ cp "${BIN}" "${MACOS_DIR}/${APP}"
 # Ad‑hoc sign 
 if command -v codesign >/dev/null 2>&1; then
   echo "→ Ad-hoc signing bundle…"
-  codesign --force --deep -s - "${APPDIR}" || echo "codesign (ad-hoc) failed; continuing"
+  /usr/bin/codesign --force --deep -s - "${APPDIR}" || echo "codesign (ad-hoc) failed; continuing"
 else
   echo "codesign not found; skipping sign"
 fi
