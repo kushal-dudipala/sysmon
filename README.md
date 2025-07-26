@@ -154,7 +154,7 @@ This program was written in like 2 days by a tired undergrad. if you look for lo
 
 ## Future Expansions
 
-Finding a way to add temp trackers on mac is really tricky without betraying the ideals behind sysmon. To be done nextime!
+Finding a way to add temp trackers on mac is really tricky without betraying the ideals behind sysmon. To be done next time!
 
 ## Support
 
