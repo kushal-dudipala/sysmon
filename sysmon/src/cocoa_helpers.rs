@@ -51,12 +51,14 @@ pub fn new_menu_item_with_title(_mt: &MainThreadToken, title: &str) -> UiObj {
     }
 }
 
+// new_menu_item_with_title_and_action
 pub fn menu_add_item(_mt: &MainThreadToken, menu: &UiObj, item: &UiObj) {
     unsafe {
         let _: () = msg_send![menu.as_id(), addItem: item.as_id()];
     }
 }
 
+// status_item_set_button
 pub fn status_item_set_menu(_mt: &MainThreadToken, status_item: &UiObj, menu: &UiObj) {
     unsafe {
         let _: () = msg_send![status_item.as_id(), setMenu: menu.as_id()];
@@ -71,12 +73,36 @@ thread_local! {
 const RUNLOOP_COMMON: &str = "NSRunLoopCommonModes";
 const RUNLOOP_TRACK: &str = "NSEventTrackingRunLoopMode";
 
+// Menu delegate class declaration
+static MENU_DELEGATE_CLASS: Lazy<&'static Class> = Lazy::new(|| unsafe {
+    let superclass = class!(NSObject);
+    let mut decl = ClassDecl::new("ComYournameSysmonMenuDelegate", superclass)
+        .expect("Unable to declare delegate");
+
+    decl.add_method(
+        sel!(menuWillOpen:),
+        menu_will_open as extern "C" fn(&mut Object, Sel, id),
+    );
+    decl.add_method(
+        sel!(menuDidClose:),
+        menu_did_close as extern "C" fn(&mut Object, Sel, id),
+    );
+    decl.add_method(
+        sel!(timerFired:),
+        timer_fired as extern "C" fn(&Object, Sel, id),
+    );
+
+    decl.register()
+});
+
+// timer_fired, called while the menu is open
 extern "C" fn timer_fired(_this: &Object, _cmd: Sel, _user_info: id) {
     if let Some(cb) = REFRESH_CB.get() {
         cb(true);
     }
 }
 
+// menu_will_open, called when the menu is about to open
 extern "C" fn menu_will_open(this: &mut Object, _cmd: Sel, _menu: id) {
     // Kick one immediate refresh.
     if let Some(cb) = REFRESH_CB.get() {
@@ -115,6 +141,7 @@ extern "C" fn menu_will_open(this: &mut Object, _cmd: Sel, _menu: id) {
     }
 }
 
+// menu_did_close, called when the menu is closed
 extern "C" fn menu_did_close(_this: &mut Object, _cmd: Sel, _menu: id) {
     // Let the app know we closed (handy if you ever want to stop refreshing).
     if let Some(cb) = REFRESH_CB.get() {
@@ -133,27 +160,7 @@ extern "C" fn menu_did_close(_this: &mut Object, _cmd: Sel, _menu: id) {
     });
 }
 
-static MENU_DELEGATE_CLASS: Lazy<&'static Class> = Lazy::new(|| unsafe {
-    let superclass = class!(NSObject);
-    let mut decl = ClassDecl::new("ComYournameSysmonMenuDelegate", superclass)
-        .expect("Unable to declare delegate");
-
-    decl.add_method(
-        sel!(menuWillOpen:),
-        menu_will_open as extern "C" fn(&mut Object, Sel, id),
-    );
-    decl.add_method(
-        sel!(menuDidClose:),
-        menu_did_close as extern "C" fn(&mut Object, Sel, id),
-    );
-    decl.add_method(
-        sel!(timerFired:),
-        timer_fired as extern "C" fn(&Object, Sel, id),
-    );
-
-    decl.register()
-});
-
+// attach_menu_delegate, creates a new delegate and sets it on the menu
 pub fn attach_menu_delegate(_mt: &MainThreadToken, menu: &UiObj) -> UiObj {
     unsafe {
         let delegate: id = msg_send![*MENU_DELEGATE_CLASS, new];
@@ -163,14 +170,7 @@ pub fn attach_menu_delegate(_mt: &MainThreadToken, menu: &UiObj) -> UiObj {
 }
 
 /* ---------------- Quit menu (target + selector) ---------------- */
-extern "C" fn quit_now(this: &Object, _cmd: Sel, _sender: id) {
-    // Terminate via AppKit (clean and fast).
-    unsafe {
-        let app: id = msg_send![class!(NSApplication), sharedApplication];
-        let _: () = msg_send![app, terminate: this];
-    }
-}
-
+// Quit target class declaration
 static QUIT_CLASS: Lazy<&'static Class> = Lazy::new(|| {
     let superclass = class!(NSObject);
     let mut decl = ClassDecl::new("ComYournameSysmonQuitTarget", superclass)
@@ -184,11 +184,21 @@ static QUIT_CLASS: Lazy<&'static Class> = Lazy::new(|| {
     decl.register()
 });
 
+// quit_now, called when the quit menu item is clicked
+extern "C" fn quit_now(this: &Object, _cmd: Sel, _sender: id) {
+    // Terminate via AppKit (clean and fast).
+    unsafe {
+        let app: id = msg_send![class!(NSApplication), sharedApplication];
+        let _: () = msg_send![app, terminate: this];
+    }
+}
+
+// make_quit_target, creates a new target for the quit menu item
 fn make_quit_target() -> id {
     unsafe { msg_send![*QUIT_CLASS, new] }
 }
 
-// make_quit_menu_item
+// make_quit_menu_item, creates a new quit menu item with the given title
 pub fn make_quit_menu_item(_mt: &MainThreadToken, title: &str) -> (UiObj, UiObj) {
     unsafe {
         let title_ns = NSString::alloc(nil).init_str(title).autorelease();
