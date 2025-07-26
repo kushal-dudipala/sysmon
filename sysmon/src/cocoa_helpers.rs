@@ -1,18 +1,20 @@
+use crate::types::{MainThreadToken, UiObj};
+use cocoa::appkit::NSMenuItem;
 use cocoa::base::{id, nil, YES};
 use cocoa::foundation::{NSAutoreleasePool, NSRunLoop, NSString};
-use objc::{class, msg_send, sel, sel_impl};
 use objc::declare::ClassDecl;
 use objc::runtime::{Class, Object, Sel};
+use objc::{class, msg_send, sel, sel_impl};
 use once_cell::sync::{Lazy, OnceCell};
 use std::cell::RefCell;
-use cocoa::appkit::NSMenuItem;
-use crate::types::{MainThreadToken, UiObj};
 
 /* ---------------- Refresh callback plumbing ---------------- */
 
 type RefreshFn = fn(bool);
 static REFRESH_CB: OnceCell<RefreshFn> = OnceCell::new();
-pub fn set_refresh_callback(cb: RefreshFn) { let _ = REFRESH_CB.set(cb); }
+pub fn set_refresh_callback(cb: RefreshFn) {
+    let _ = REFRESH_CB.set(cb);
+}
 
 /* ---------------- Basic UI helpers ---------------- */
 
@@ -28,7 +30,6 @@ pub fn set_button_title(_mt: &MainThreadToken, ptr: &UiObj, title: &str) {
     }
 }
 
-
 // set_menu_item_title
 pub fn set_menu_item_title(_mt: &MainThreadToken, ptr: &UiObj, title: &str) {
     unsafe {
@@ -36,7 +37,6 @@ pub fn set_menu_item_title(_mt: &MainThreadToken, ptr: &UiObj, title: &str) {
         let _: () = msg_send![ptr.as_id(), setTitle: s];
     }
 }
-
 
 // new_menu_item_with_title
 pub fn new_menu_item_with_title(_mt: &MainThreadToken, title: &str) -> UiObj {
@@ -52,11 +52,15 @@ pub fn new_menu_item_with_title(_mt: &MainThreadToken, title: &str) -> UiObj {
 }
 
 pub fn menu_add_item(_mt: &MainThreadToken, menu: &UiObj, item: &UiObj) {
-    unsafe { let _: () = msg_send![menu.as_id(), addItem: item.as_id()]; }
+    unsafe {
+        let _: () = msg_send![menu.as_id(), addItem: item.as_id()];
+    }
 }
 
 pub fn status_item_set_menu(_mt: &MainThreadToken, status_item: &UiObj, menu: &UiObj) {
-    unsafe { let _: () = msg_send![status_item.as_id(), setMenu: menu.as_id()]; }
+    unsafe {
+        let _: () = msg_send![status_item.as_id(), setMenu: menu.as_id()];
+    }
 }
 
 /* ---------------- NSMenuDelegate using NSTimer (in proper modes) ---------------- */
@@ -65,15 +69,19 @@ thread_local! {
     static TIMER: RefCell<id> = RefCell::new(nil);
 }
 const RUNLOOP_COMMON: &str = "NSRunLoopCommonModes";
-const RUNLOOP_TRACK:  &str = "NSEventTrackingRunLoopMode";
+const RUNLOOP_TRACK: &str = "NSEventTrackingRunLoopMode";
 
 extern "C" fn timer_fired(_this: &Object, _cmd: Sel, _user_info: id) {
-    if let Some(cb) = REFRESH_CB.get() { cb(true); }
+    if let Some(cb) = REFRESH_CB.get() {
+        cb(true);
+    }
 }
 
 extern "C" fn menu_will_open(this: &mut Object, _cmd: Sel, _menu: id) {
     // Kick one immediate refresh.
-    if let Some(cb) = REFRESH_CB.get() { cb(true); }
+    if let Some(cb) = REFRESH_CB.get() {
+        cb(true);
+    }
 
     unsafe {
         // 1) Create an *unscheduled* repeating timer.
@@ -92,8 +100,7 @@ extern "C" fn menu_will_open(this: &mut Object, _cmd: Sel, _menu: id) {
         // 2) Add the timer to run loop in modes that stay active during menu tracking.
         let run_loop: id = NSRunLoop::currentRunLoop();
         let common_mode = NSString::alloc(nil).init_str(RUNLOOP_COMMON).autorelease();
-        let track_mode  = NSString::alloc(nil).init_str(RUNLOOP_TRACK).autorelease();
-
+        let track_mode = NSString::alloc(nil).init_str(RUNLOOP_TRACK).autorelease();
 
         let _: () = msg_send![run_loop, addTimer: timer forMode: common_mode];
         let _: () = msg_send![run_loop, addTimer: timer forMode: track_mode];
@@ -110,26 +117,39 @@ extern "C" fn menu_will_open(this: &mut Object, _cmd: Sel, _menu: id) {
 
 extern "C" fn menu_did_close(_this: &mut Object, _cmd: Sel, _menu: id) {
     // Let the app know we closed (handy if you ever want to stop refreshing).
-    if let Some(cb) = REFRESH_CB.get() { cb(false); }
+    if let Some(cb) = REFRESH_CB.get() {
+        cb(false);
+    }
 
     // Invalidate and drop the timer.
     TIMER.with(|slot| {
         let t = *slot.borrow();
         if t != nil {
-            unsafe { let _: () = msg_send![t, invalidate]; }
+            unsafe {
+                let _: () = msg_send![t, invalidate];
+            }
             slot.replace(nil);
         }
     });
 }
 
 static MENU_DELEGATE_CLASS: Lazy<&'static Class> = Lazy::new(|| unsafe {
-     let superclass = class!(NSObject);
-     let mut decl = ClassDecl::new("ComYournameSysmonMenuDelegate", superclass)
+    let superclass = class!(NSObject);
+    let mut decl = ClassDecl::new("ComYournameSysmonMenuDelegate", superclass)
         .expect("Unable to declare delegate");
 
-    decl.add_method(sel!(menuWillOpen:),  menu_will_open  as extern "C" fn(&mut Object, Sel, id));
-    decl.add_method(sel!(menuDidClose:),  menu_did_close  as extern "C" fn(&mut Object, Sel, id));
-    decl.add_method(sel!(timerFired:),    timer_fired     as extern "C" fn(&Object, Sel, id));
+    decl.add_method(
+        sel!(menuWillOpen:),
+        menu_will_open as extern "C" fn(&mut Object, Sel, id),
+    );
+    decl.add_method(
+        sel!(menuDidClose:),
+        menu_did_close as extern "C" fn(&mut Object, Sel, id),
+    );
+    decl.add_method(
+        sel!(timerFired:),
+        timer_fired as extern "C" fn(&Object, Sel, id),
+    );
 
     decl.register()
 });
@@ -179,6 +199,9 @@ pub fn make_quit_menu_item(_mt: &MainThreadToken, title: &str) -> (UiObj, UiObj)
         let target = make_quit_target();
         let _: () = msg_send![item, setTarget: target];
         let _: () = msg_send![item, setEnabled: YES];
-        (UiObj::from_raw_retained(item), UiObj::from_raw_retained(target))
+        (
+            UiObj::from_raw_retained(item),
+            UiObj::from_raw_retained(target),
+        )
     }
 }

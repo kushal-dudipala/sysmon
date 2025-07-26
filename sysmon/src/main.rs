@@ -2,9 +2,9 @@
 
 mod cocoa_helpers;
 mod ioreport;
+mod net;
 mod types;
 mod units;
-mod net;
 
 use crate::cocoa_helpers::*;
 use crate::types::{MainThreadToken, UiObj};
@@ -80,7 +80,6 @@ fn abort_if_dyld_injection() {
     }
 }
 
-
 #[inline]
 unsafe fn nonnull(obj: cocoa::base::id, what: &str) -> cocoa::base::id {
     if obj == cocoa::base::nil {
@@ -89,7 +88,6 @@ unsafe fn nonnull(obj: cocoa::base::id, what: &str) -> cocoa::base::id {
     }
     obj
 }
-
 
 /* ---------------- Global sysinfo cache ---------------- */
 
@@ -129,8 +127,8 @@ struct UiState {
     cpu_t_item: UiObj,
     gpu_t_item: UiObj,
     net_item: UiObj,
-    _delegate: UiObj,     // retain the NSTimer menu delegate
-    _quit_target: UiObj,  // retain the quit target so selector stays valid
+    _delegate: UiObj,    // retain the NSTimer menu delegate
+    _quit_target: UiObj, // retain the quit target so selector stays valid
 }
 
 thread_local! {
@@ -160,13 +158,19 @@ fn refresh(_opened: bool) {
         let (rx_bps, tx_bps) = net::net_usage_bps();
 
         set_menu_item_title(&mt, &ui.cpu_item, &format!("CPU:   {:.1}%", cpu));
-        set_menu_item_title(&mt, &ui.mem_item, &format!("Mem:   {:.1}/{:.1} GB", used_gb, total_gb));
+        set_menu_item_title(
+            &mt,
+            &ui.mem_item,
+            &format!("Mem:   {:.1}/{:.1} GB", used_gb, total_gb),
+        );
         set_menu_item_title(
             &mt,
             &ui.cpu_t_item,
             &format!(
                 "CPU T: {}",
-                cpu_t.map(|t| format!("{t:.1} °C")).unwrap_or_else(|| "—".into())
+                cpu_t
+                    .map(|t| format!("{t:.1} °C"))
+                    .unwrap_or_else(|| "—".into())
             ),
         );
         set_menu_item_title(
@@ -174,7 +178,9 @@ fn refresh(_opened: bool) {
             &ui.gpu_t_item,
             &format!(
                 "GPU T: {}",
-                gpu_t.map(|t| format!("{t:.1} °C")).unwrap_or_else(|| "—".into())
+                gpu_t
+                    .map(|t| format!("{t:.1} °C"))
+                    .unwrap_or_else(|| "—".into())
             ),
         );
         set_menu_item_title(

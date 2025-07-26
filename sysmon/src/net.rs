@@ -5,8 +5,7 @@ use sysinfo::Networks;
 static NETWORKS: Lazy<Mutex<Networks>> =
     Lazy::new(|| Mutex::new(Networks::new_with_refreshed_list()));
 
-static LAST_TIME: Lazy<Mutex<Option<Instant>>> =
-    Lazy::new(|| Mutex::new(None));
+static LAST_TIME: Lazy<Mutex<Option<Instant>>> = Lazy::new(|| Mutex::new(None));
 
 pub fn net_usage_bps() -> (f32, f32) {
     let mut nets = NETWORKS.lock().unwrap();

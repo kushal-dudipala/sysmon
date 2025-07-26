@@ -40,8 +40,6 @@ impl UiObj {
     pub fn as_id(&self) -> id {
         *self.0
     }
-
-    
 }
 
 impl fmt::Debug for UiObj {
