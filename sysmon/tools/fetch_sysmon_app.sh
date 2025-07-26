@@ -11,7 +11,7 @@ REPO_PARENT="$(cd -- "${REPO_ROOT}/.." && pwd)"
 
 # Build
 echo "→ Building ($PROFILE)…"
-cargo build --manifest-path "${REPO_ROOT}/Cargo.toml" --${PROFILE}
+/usr/bin/env cargo build --manifest-path "${REPO_ROOT}/Cargo.toml" --${PROFILE} --locked
 
 BIN="${REPO_ROOT}/target/${PROFILE}/${APP}"
 
