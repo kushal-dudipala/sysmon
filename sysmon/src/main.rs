@@ -22,7 +22,7 @@ use std::sync::{Mutex, MutexGuard};
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
 use units::{bytes_to_gb, fmt_rate};
 
-/* ---------------- Panic hook (abort-fast on panic) ---------------- */
+/* ---------------- Panic hooks (abort-fast on panic) ---------------- */
 
 fn install_panic_hook() {
     panic::set_hook(Box::new(|info| {
@@ -127,8 +127,8 @@ struct UiState {
     cpu_t_item: UiObj,
     gpu_t_item: UiObj,
     net_item: UiObj,
-    _delegate: UiObj,    // retain the NSTimer menu delegate
-    _quit_target: UiObj, // retain the quit target so selector stays valid
+    _delegate: UiObj,
+    _quit_target: UiObj,
 }
 
 thread_local! {

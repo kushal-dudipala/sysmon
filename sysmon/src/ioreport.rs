@@ -1,5 +1,5 @@
-// Fill this when you're ready to parse IOReport. For now we return None.
-// Keep this file around so your main code doesn't change when you wire temps in.
+// this file isnt implemented yet because macos sucks.
+// it is a placeholder for future implementation of CPU and GPU temperature reporting
 
 pub fn cpu_temp_c() -> Option<f32> {
     None
