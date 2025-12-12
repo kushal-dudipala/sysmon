@@ -22,23 +22,26 @@ Sysmon is a lightweight, open-source, privacy‑respecting macOS menu‑bar syst
 - **System data**: `sysinfo` crate provides CPU percentages, memory usage, and network deltas
 - **Performance**: Minimal overhead when idle, efficient polling only during active use
 
----
-
-## Prerequisites
-
-- **macOS** (10.12+ recommended)
-- **Xcode Command Line Tools**: `xcode-select --install`
-- **Rust toolchain**: Install via [rustup](https://rustup.rs/)
 
 ---
 
-## Build & Run
+## build & run
 
 ### Super Quick Start
 
 Download sysmon.zip from root dir, unzip, and use! You will need to verify that the app is safe to use in system-settings.
 
 ### Quick Start from source
+
+---
+
+#### prereqs
+
+- **macOS** (10.12+ recommended)
+- **Xcode Command Line Tools**: `xcode-select --install`
+- **Rust toolchain**: Install via [rustup](https://rustup.rs/)
+
+#### repo
 
 ```bash
 git clone https://github.com/kushaldudipala/sysmon.git
@@ -52,7 +55,7 @@ The menu bar will show a new item 🛠️. Click it to see system metrics. Quit 
 
 ---
 
-## Create a macOS .app bundle
+## create a macOS .app bundle
 
 ```bash
 cd sysmon/sysmon
@@ -68,7 +71,7 @@ cargo build --release
 
 ---
 
-## Security & Privacy
+## security & privacy features
 
 - **No elevated privileges**: Runs entirely in user space
 - **No network access**: All data is read locally from system APIs
@@ -78,7 +81,7 @@ cargo build --release
 
 ---
 
-## Credits & License
+## credits/license
 
 - **App code**: © Kushal Dudipala
 - **license**: [MIT License](LICENSE)
@@ -87,10 +90,6 @@ cargo build --release
 
 ---
 
-## Future Expansions
+## future work
 
 Finding a way to add temp trackers on mac is really tricky without betraying the ideals behind sysmon. To be done next time!
-
-## Support
-
-If you encounter any issues or have questions, please [open an issue](https://github.com/kushaldudipala/sysmon/issues) on GitHub.
